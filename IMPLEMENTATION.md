@@ -1,0 +1,910 @@
+# Kivara Lingo — Especificación de implementación
+
+> Documento dirigido a la IA / equipo que implementará la extensión real a partir del prototipo de UI/UX. Este documento es la **única fuente de verdad** sobre qué hay que construir, con qué tecnologías y cómo cada pieza encaja con el resto.
+
+**Audiencia:** ingeniero (humano o IA) con experiencia en TypeScript, React y APIs de navegador. No asume conocimiento previo del dominio (subtítulos, Anki, ASR).
+
+**Alcance:** convertir el prototipo React (`src/app/`) en una **extensión Chromium / Firefox (Manifest V3)** que funcione real sobre Netflix, HBO Max, Disney+, Prime Video y YouTube, integrada con Anki vía AnkiConnect.
+
+---
+
+## 0. Tabla de contenidos
+
+1. [Visión y principios de diseño](#1-visión-y-principios-de-diseño)
+2. [Arquitectura general](#2-arquitectura-general)
+3. [Stack tecnológico definitivo](#3-stack-tecnológico-definitivo)
+4. [Estructura de carpetas final](#4-estructura-de-carpetas-final)
+5. [Manifest V3 — configuración exacta](#5-manifest-v3--configuración-exacta)
+6. [Módulos del sistema](#6-módulos-del-sistema)
+7. [Adaptadores por plataforma de streaming](#7-adaptadores-por-plataforma-de-streaming)
+8. [Captura de audio y fotograma](#8-captura-de-audio-y-fotograma)
+9. [Reconocimiento y traducción](#9-reconocimiento-y-traducción)
+10. [Tokenización y MWE](#10-tokenización-y-mwe)
+11. [Integración con Anki (AnkiConnect)](#11-integración-con-anki-ankiconnect)
+12. [Modelo de datos y persistencia](#12-modelo-de-datos-y-persistencia)
+13. [UI: del prototipo a la realidad](#13-ui-del-prototipo-a-la-realidad)
+14. [Atajos de teclado](#14-atajos-de-teclado)
+15. [Permisos, privacidad y seguridad](#15-permisos-privacidad-y-seguridad)
+16. [Performance y límites](#16-performance-y-límites)
+17. [Testing](#17-testing)
+18. [Build, empaquetado y publicación](#18-build-empaquetado-y-publicación)
+19. [Roadmap por fases](#19-roadmap-por-fases)
+20. [Glosario](#20-glosario)
+
+---
+
+## 1. Visión y principios de diseño
+
+### 1.1 Producto
+
+Extensión de navegador que se monta sobre reproductores de streaming y convierte sus subtítulos en una herramienta de aprendizaje de vocabulario integrada con Anki.
+
+### 1.2 Principios no negociables
+
+1. **Mínima fricción.** Tres acciones máximo entre "no entender una palabra" y "tarjeta guardada en Anki": hover, leer, clic. Ninguna pausa de video requerida.
+2. **No invadir.** La UI sobre el video debe ser invisible cuando el usuario solo quiere ver. El modo Lectura es de primera clase, no opcional.
+3. **Local primero.** Diccionarios, MWE, deduplicación y caché viven en el navegador. Llamadas externas (TTS, ASR, traducción) son fallback, no requisito.
+4. **Plataforma-agnóstico.** El núcleo no sabe si está sobre Netflix o YouTube. Cada plataforma se aísla en un *adapter*.
+5. **Anki como ciudadano de primera.** El mapeo de campos es configurable, no asumido. Cualquier *note type* del usuario debe poder funcionar.
+6. **No romper la experiencia base.** Si la extensión falla, el video debe seguir funcionando.
+
+---
+
+## 2. Arquitectura general
+
+### 2.1 Diagrama de bloques
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                      Pestaña del navegador                      │
+│                                                                 │
+│  ┌──────────────────────────────────────┐  ┌────────────────┐  │
+│  │  Reproductor de la plataforma        │  │  Content UI     │  │
+│  │  (Netflix, YouTube, ...)             │  │  (React, Shadow │  │
+│  │                                       │  │   DOM)          │  │
+│  │  ┌────────────────────────────────┐  │  │                 │  │
+│  │  │  Subtítulo nativo (oculto)     │  │  │  - Subtitle     │  │
+│  │  └────────────────────────────────┘  │  │    overlay      │  │
+│  │                                       │  │  - Word popover │  │
+│  │  ┌────────────────────────────────┐  │  │  - Side panel   │  │
+│  │  │  Subtitle Overlay (Kivara)     │  │  │  - Toasts       │  │
+│  │  │  ← inyectado por content script│  │  │                 │  │
+│  │  └────────────────────────────────┘  │  └────────────────┘  │
+│  └──────────────────────────────────────┘                       │
+│                       ▲                                          │
+│                       │ messages (chrome.runtime)                │
+│                       ▼                                          │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │  Platform Adapter (Netflix / YouTube / ...)              │   │
+│  │  - extrae cues, frame rate, currentTime, seek            │   │
+│  │  - expone API uniforme: SubtitleSource                   │   │
+│  └──────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────┘
+                       ▲
+                       │
+                       ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  Service Worker (background)                                    │
+│  - AnkiConnect proxy (CORS-free)                                │
+│  - TTS / ASR / translate API calls                              │
+│  - chrome.tabCapture (audio)                                    │
+│  - Storage (chrome.storage.local + sync)                        │
+│  - Settings, deduplicación de tarjetas                          │
+└─────────────────────────────────────────────────────────────────┘
+                       ▲
+                       │
+                       ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  Popup (toolbar)                                                │
+│  - Toggle on/off de la extensión                                │
+│  - Atajo "abrir panel"                                          │
+│  - Estado: conectado a Anki, modo activo                        │
+└─────────────────────────────────────────────────────────────────┘
+                       ▲
+                       │
+                       ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  Options page (chrome-extension://.../options.html)             │
+│  - Configuración avanzada (mapeo Anki, atajos, perfiles)        │
+│  - Equivalente a las pestañas Cards / Settings del prototipo    │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### 2.2 Flujo de datos: "guardar tarjeta"
+
+1. Usuario hace hover sobre `these days` en el subtítulo overlay.
+2. `content/subtitle-overlay.tsx` consulta el `dictionary` local → muestra `WordPopover`.
+3. Usuario hace clic en "Guardar".
+4. Content envía `{ type: 'CREATE_CARD', payload: { token, cue, sentence, time } }` al service worker.
+5. Service worker:
+   - Llama al `platform adapter` para `getCurrentTime()` y `getActiveCue()`.
+   - Pide al `capture` module: `captureFrame(time)` + `captureAudioWindow(cueStart, cueEnd)`.
+   - Resuelve traducciones / fonéticas faltantes (caché → API).
+   - Construye el payload Anki según `mapping` del usuario.
+   - Llama a AnkiConnect (`addNote`).
+6. Service worker responde `{ ok: true, noteId }` o `{ ok: false, error }`.
+7. Content muestra toast (sonner-equivalente) confirmando.
+
+---
+
+## 3. Stack tecnológico definitivo
+
+### 3.1 Core
+
+| Capa | Tecnología | Por qué |
+|---|---|---|
+| Lenguaje | TypeScript 5.x estricto | Tipado de mensajes entre contextos es crítico. |
+| Framework UI | React 18 | Reusa todo el prototipo. |
+| Estilos | Tailwind CSS v4 | Reusa `theme.css`, `sl-*` clases. |
+| Build | **Vite + `@crxjs/vite-plugin`** | Vite con HMR funciona en MV3 vía `@crxjs/vite-plugin`. Es el estándar actual; webpack está descontinuado para extensiones. |
+| Empaquetado | `web-ext` (Mozilla) | CLI para validar y firmar Firefox. Para Chrome se sube el zip producido por Vite. |
+| Manifest | **Manifest V3** | Obligatorio en Chrome desde 2024. |
+| Cross-browser | `webextension-polyfill` | Wrapping de `chrome.*` → `browser.*` con Promesas, funciona en ambos. |
+
+### 3.2 Librerías de runtime
+
+| Función | Librería | Notas |
+|---|---|---|
+| Estado global | **Zustand** | Más liviano que Redux, persiste con `persist` middleware en `chrome.storage.local`. |
+| Mensajería typed | **`webext-bridge`** | Mensajes entre content / background / popup con tipos TS. Evita reinventar `chrome.runtime.sendMessage`. |
+| UI primitives | Reusar `shadcn/ui` o headless si el prototipo lo introduce | Por ahora el prototipo usa Tailwind + componentes propios. Mantener. |
+| Iconos | `lucide-react` | Idem prototipo. |
+| Toasts | **`sonner`** | Idem prototipo. Funciona dentro de Shadow DOM. |
+| Drag (panel flotante) | `react-dnd` o `@use-gesture/react` | Para mover el panel cuando es popup. |
+| Tokenización avanzada | `intl-segmenter-polyfill` (fallback) | `Intl.Segmenter` está en navegadores modernos; útil para CJK. |
+| Detección de idioma | **`franc-min`** o `cld3-asm` | Para no aplicar inglés sobre subtítulos en alemán. |
+
+### 3.3 APIs de navegador (qué usar para cada cosa)
+
+| Necesidad | API | Detalles |
+|---|---|---|
+| Inyectar UI sobre la página | `content_scripts` + **Shadow DOM** | El Shadow DOM aísla los estilos del CSS de Netflix/YouTube. Renderizar React dentro de un host shadow. |
+| Capturar audio de la pestaña | `chrome.tabCapture.capture()` | Devuelve un `MediaStream`. Solo funciona si la pestaña tiene el foco y el usuario activa la extensión. |
+| Capturar frame del video | `<video>.captureStream()` + `OffscreenCanvas` | Dibujar el frame y exportar como `Blob` PNG. Más barato que `chrome.tabs.captureVisibleTab` (que captura toda la pestaña). |
+| Inyectar JS en el contexto MAIN | `chrome.scripting.executeScript({ world: 'MAIN' })` | Necesario para acceder al `<video>` element y a las APIs internas de Netflix (algunos players lo aíslan). |
+| Storage de settings | `chrome.storage.sync` (≤100KB) | Para preferencias del usuario. Sincroniza entre dispositivos. |
+| Storage de caché | `chrome.storage.local` o **IndexedDB** | Para diccionarios, audio cacheado, screenshots. IndexedDB para >5MB. |
+| Atajos | `commands` en manifest | `Ctrl+S`, `Alt+C`, etc. Configurables por el usuario en `chrome://extensions/shortcuts`. |
+| Comunicación con AnkiConnect | `fetch('http://127.0.0.1:8765')` desde service worker | Localhost no requiere CORS desde una extensión con el host permission correcto. |
+| Offscreen audio decoding | `chrome.offscreen.createDocument()` | MV3 service workers no tienen DOM ni Audio API; usar offscreen document para procesar audio. |
+
+### 3.4 Servicios externos (todos opcionales, con fallback)
+
+| Servicio | Uso | Recomendación |
+|---|---|---|
+| Traducción | LibreTranslate (self-host), DeepL Free, Google Translate API | Usuario configura su clave en Options. Si no hay clave, traducción = solo del diccionario local. |
+| TTS de palabra | `SpeechSynthesisUtterance` (Web Speech API) | Gratis, offline, calidad media. Fallback: ElevenLabs / Google Cloud TTS. |
+| ASR (forced alignment) | `whisper.cpp` vía WASM, o servidor self-host | Para subtítulos malalineados. Es un *nice-to-have*, no MVP. |
+| Diccionarios | Wiktextract dumps (offline), Lexicala API | El MVP usa diccionario bundled (top 5000 palabras del idioma objetivo). |
+
+---
+
+## 4. Estructura de carpetas final
+
+```
+kivara-lingo-extension/
+├── manifest.json                       # Manifest V3
+├── vite.config.ts                      # Vite + @crxjs/vite-plugin
+├── package.json
+├── tsconfig.json
+├── README.md
+├── IMPLEMENTATION.md                   # este documento
+│
+├── src/
+│   ├── background/
+│   │   ├── service-worker.ts           # entrypoint MV3
+│   │   ├── anki-connect.ts             # cliente AnkiConnect
+│   │   ├── capture-orchestrator.ts     # coordina audio + frame
+│   │   ├── translate.ts                # adaptadores de servicios externos
+│   │   ├── tts.ts
+│   │   └── messaging.ts                # webext-bridge handlers
+│   │
+│   ├── content/
+│   │   ├── index.tsx                   # entrypoint del content script
+│   │   ├── shadow-host.ts              # crea Shadow DOM y monta React
+│   │   ├── platform-adapters/
+│   │   │   ├── index.ts                # detecta plataforma y devuelve adapter
+│   │   │   ├── types.ts                # interface SubtitleSource
+│   │   │   ├── netflix.ts
+│   │   │   ├── youtube.ts
+│   │   │   ├── disney-plus.ts
+│   │   │   ├── hbo-max.ts
+│   │   │   ├── prime-video.ts
+│   │   │   └── generic-html5.ts        # fallback: <video> + <track>
+│   │   ├── ui/
+│   │   │   ├── SubtitleOverlay.tsx     # equivale al subtítulo del prototipo
+│   │   │   ├── WordPopover.tsx         # del prototipo
+│   │   │   ├── SidePanel.tsx           # ExtensionPanel del prototipo
+│   │   │   ├── tabs/
+│   │   │   │   ├── SubtitlesTab.tsx
+│   │   │   │   ├── CardsTab.tsx
+│   │   │   │   └── SettingsTab.tsx
+│   │   │   └── Toaster.tsx             # wrapper de sonner dentro del shadow
+│   │   ├── nlp/
+│   │   │   ├── tokenize.ts             # tokenizeSentence del prototipo
+│   │   │   ├── mwe-registry.ts         # carga el JSON de MWEs
+│   │   │   └── dictionary.ts           # consulta diccionario local
+│   │   └── capture/
+│   │       ├── frame.ts                # video.captureStream + OffscreenCanvas
+│   │       └── vad.ts                  # voice activity detection (silero VAD wasm)
+│   │
+│   ├── popup/
+│   │   ├── index.html
+│   │   ├── Popup.tsx                   # toggle on/off + estado AnkiConnect
+│   │   └── main.tsx
+│   │
+│   ├── options/
+│   │   ├── index.html
+│   │   ├── Options.tsx                 # mismas tabs Cards / Settings del prototipo
+│   │   └── main.tsx
+│   │
+│   ├── offscreen/
+│   │   ├── offscreen.html              # documento offscreen para audio
+│   │   └── audio-processor.ts
+│   │
+│   ├── shared/
+│   │   ├── types.ts                    # SubtitleStyles, AnkiMapping, FieldSource, Message
+│   │   ├── store.ts                    # Zustand store (persistido en chrome.storage)
+│   │   ├── constants.ts
+│   │   └── utils.ts
+│   │
+│   ├── assets/
+│   │   ├── icons/                      # 16/32/48/128
+│   │   ├── dictionaries/
+│   │   │   ├── en.json                 # diccionario inglés bundled
+│   │   │   └── ...
+│   │   └── mwes/
+│   │       ├── en.json                 # MWE registry inglés
+│   │       └── ...
+│   │
+│   └── styles/
+│       ├── theme.css                   # tokens, dark mode, sl-* clases (del prototipo)
+│       └── shadow.css                  # CSS adicional para inyección en Shadow DOM
+│
+└── tests/
+    ├── unit/
+    ├── integration/
+    └── e2e/                            # Playwright contra páginas reales (sandbox)
+```
+
+---
+
+## 5. Manifest V3 — configuración exacta
+
+```json
+{
+  "manifest_version": 3,
+  "name": "Kivara Lingo",
+  "version": "0.1.0",
+  "description": "Aprende idiomas mientras ves tu serie favorita.",
+  "icons": {
+    "16": "assets/icons/16.png",
+    "32": "assets/icons/32.png",
+    "48": "assets/icons/48.png",
+    "128": "assets/icons/128.png"
+  },
+  "action": {
+    "default_popup": "popup/index.html",
+    "default_icon": "assets/icons/32.png",
+    "default_title": "Kivara Lingo"
+  },
+  "background": {
+    "service_worker": "background/service-worker.js",
+    "type": "module"
+  },
+  "options_ui": {
+    "page": "options/index.html",
+    "open_in_tab": true
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*.netflix.com/*",
+        "*://*.youtube.com/*",
+        "*://*.disneyplus.com/*",
+        "*://*.hbomax.com/*",
+        "*://*.max.com/*",
+        "*://*.primevideo.com/*"
+      ],
+      "js": ["content/index.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+  "permissions": [
+    "storage",
+    "tabCapture",
+    "scripting",
+    "offscreen",
+    "activeTab"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1:8765/*",
+    "https://api-free.deepl.com/*",
+    "https://translation.googleapis.com/*"
+  ],
+  "commands": {
+    "save-card": {
+      "suggested_key": { "default": "Ctrl+S", "mac": "Command+S" },
+      "description": "Guardar tarjeta de la palabra/expresión bajo el cursor"
+    },
+    "toggle-subtitles": {
+      "suggested_key": { "default": "Alt+C" },
+      "description": "Mostrar / ocultar subtítulos de Kivara"
+    },
+    "repeat-line": {
+      "suggested_key": { "default": "Alt+R" },
+      "description": "Repetir el último cue"
+    },
+    "recapture-frame": {
+      "suggested_key": { "default": "Alt+V" },
+      "description": "Re-capturar el fotograma del cue actual"
+    },
+    "toggle-panel": {
+      "suggested_key": { "default": "Alt+K" },
+      "description": "Abrir / cerrar panel de Kivara"
+    }
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["assets/*", "offscreen/offscreen.html"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}
+```
+
+**Notas críticas:**
+
+- `tabCapture` requiere que el usuario invoque la extensión (clic en el icono) o un atajo. No se puede capturar audio "en silencio".
+- `host_permissions` para `127.0.0.1:8765` evita CORS contra AnkiConnect.
+- `all_frames: false` para no inyectarse en iframes de anuncios.
+- Si se publica en Firefox, añadir `"browser_specific_settings": { "gecko": { "id": "kivara-lingo@kivara.app" } }`.
+
+---
+
+## 6. Módulos del sistema
+
+### 6.1 Content Script (`src/content/index.tsx`)
+
+Responsabilidades:
+
+1. Detectar la plataforma (`platform-adapters/index.ts`).
+2. Crear un host con Shadow DOM sobre el `<video>`.
+3. Montar React dentro del shadow con `SubtitleOverlay` y `SidePanel`.
+4. Suscribirse al stream de cues del adapter y re-renderizar el subtítulo en cada cambio.
+5. Ocultar el subtítulo nativo de la plataforma (CSS injection vía adapter).
+6. Manejar interacciones (hover, scroll, Alt) y disparar mensajes al service worker.
+
+Esqueleto:
+
+```ts
+// src/content/index.tsx
+import { createRoot } from 'react-dom/client';
+import { detectPlatform } from './platform-adapters';
+import { ShadowHost } from './shadow-host';
+import { App } from './ui/App';
+
+(async () => {
+  const adapter = await detectPlatform();
+  if (!adapter) return;
+
+  await adapter.waitForVideo();
+  adapter.hideNativeSubtitles();
+
+  const host = ShadowHost.mount(adapter.getVideoElement());
+  createRoot(host.reactRoot).render(<App adapter={adapter} />);
+})();
+```
+
+### 6.2 Service Worker (`src/background/service-worker.ts`)
+
+Responsabilidades:
+
+1. Recibir mensajes del content y popup vía `webext-bridge`.
+2. Coordinar captura (audio + frame).
+3. Enriquecer datos: traducción, fonética, audio TTS si faltan.
+4. Hablar con AnkiConnect.
+5. Persistir caché y deduplicar.
+6. Manejar atajos globales (`chrome.commands.onCommand`).
+
+Recordatorio MV3: el service worker se duerme tras 30s sin actividad. **No usar variables globales como caché**; usar `chrome.storage.session` o IndexedDB.
+
+### 6.3 Shadow Host (`src/content/shadow-host.ts`)
+
+```ts
+export class ShadowHost {
+  static mount(videoEl: HTMLVideoElement) {
+    const host = document.createElement('div');
+    host.id = 'kivara-lingo-host';
+    host.style.cssText = 'all: initial; position: absolute; inset: 0; pointer-events: none;';
+    videoEl.parentElement!.appendChild(host);
+
+    const shadow = host.attachShadow({ mode: 'open' });
+    const reactRoot = document.createElement('div');
+    reactRoot.style.cssText = 'pointer-events: auto;';
+    shadow.appendChild(reactRoot);
+
+    // Inyectar Tailwind compilado dentro del shadow
+    const style = document.createElement('style');
+    style.textContent = TAILWIND_CSS_AS_STRING; // import como ?inline en Vite
+    shadow.appendChild(style);
+
+    return { host, shadow, reactRoot };
+  }
+}
+```
+
+---
+
+## 7. Adaptadores por plataforma de streaming
+
+### 7.1 Interface uniforme
+
+```ts
+// src/content/platform-adapters/types.ts
+export interface SubtitleCue {
+  id: string;
+  start: number;        // segundos
+  end: number;
+  text: string;
+  language: string;     // BCP-47: 'en', 'es-MX'
+}
+
+export interface SubtitleSource {
+  platform: 'netflix' | 'youtube' | 'disney' | 'hbo' | 'prime' | 'generic';
+  getVideoElement(): HTMLVideoElement;
+  waitForVideo(): Promise<void>;
+  getCurrentTime(): number;
+  seek(t: number): void;
+  setPlaybackRate(rate: number): void;
+  pause(): void;
+  play(): void;
+  /** Stream de cues activos (puede ser 0, 1 o más simultáneos). */
+  onCueChange(cb: (cues: SubtitleCue[]) => void): () => void;
+  /** Lista de tracks de subtítulo disponibles. */
+  getAvailableTracks(): Promise<{ language: string; label: string }[]>;
+  setActiveTrack(language: string): Promise<void>;
+  hideNativeSubtitles(): void;
+  showNativeSubtitles(): void;
+}
+```
+
+### 7.2 Estrategias por plataforma
+
+| Plataforma | Cómo obtener cues |
+|---|---|
+| **Netflix** | Interceptar `XMLHttpRequest`/`fetch` para `nflxvideo.net/?o=...&v=...` (pista TTML/WebVTT). Parsear con `vtt.js` o parser propio. Alternativa robusta: hookear `cadmium-playercore` desde el contexto MAIN. |
+| **YouTube** | Usar `<video>.textTracks` directamente (HTML5 `<track>`). Si falta, llamar al endpoint `youtube.com/api/timedtext`. |
+| **Disney+** | Tracks WebVTT vía `<video>.textTracks`. Player es Shaka — accesible vía `window.shakaPlayer` en algunos builds. |
+| **HBO Max / Max** | Player propio. Interceptar manifest HLS/DASH y extraer pistas WebVTT externas. |
+| **Prime Video** | Player con TTML embebido. Interceptar `fetch` a `loadcaption`. |
+| **Generic HTML5** | `<video>.textTracks` — funciona para cualquier sitio con `<track>`. |
+
+**Patrón común:** cada adapter expone un `EventEmitter`-style `onCueChange`. El content script no sabe cómo se obtuvieron los cues, solo los recibe.
+
+### 7.3 Inyección en contexto MAIN
+
+Algunos adapters (Netflix, Prime) requieren acceso a objetos del player que viven en el `MAIN world`. Usar:
+
+```ts
+chrome.scripting.executeScript({
+  target: { tabId },
+  world: 'MAIN',
+  files: ['platform-adapters/netflix-main.js'],
+});
+```
+
+El script en MAIN se comunica con el content script (ISOLATED) vía `window.postMessage` con un namespace propio.
+
+---
+
+## 8. Captura de audio y fotograma
+
+### 8.1 Frame (screenshot del cue)
+
+```ts
+// src/content/capture/frame.ts
+export async function captureFrame(video: HTMLVideoElement): Promise<Blob> {
+  const canvas = new OffscreenCanvas(video.videoWidth, video.videoHeight);
+  const ctx = canvas.getContext('2d')!;
+  ctx.drawImage(video, 0, 0);
+  return canvas.convertToBlob({ type: 'image/jpeg', quality: 0.85 });
+}
+```
+
+**Importante:** Netflix y otros DRM-protected videos pueden lanzar `SecurityError` (canvas tainted). Mitigación:
+- Detectar el error y mostrar al usuario "captura de frame no disponible para este contenido".
+- Alternativa: `chrome.tabs.captureVisibleTab()` — pero captura toda la pestaña, no solo el video. Recortar después.
+
+### 8.2 Audio del cue
+
+Flujo:
+
+1. `chrome.tabCapture.capture({ audio: true, video: false })` → `MediaStream`.
+2. Pasarlo a un **Offscreen Document** (porque el service worker no tiene Audio API).
+3. En el offscreen: `MediaRecorder` graba un buffer rolling de N segundos (default 30s).
+4. Cuando se dispara "guardar tarjeta": cortar el buffer entre `cue.start` y `cue.end + post-roll`.
+5. Encode a MP3 (`lamejs`) o WebM.
+6. Devolver `Blob` al service worker → enviar a Anki.
+
+Manifest necesita `"offscreen"` permission. El offscreen document se crea on-demand:
+
+```ts
+await chrome.offscreen.createDocument({
+  url: 'offscreen/offscreen.html',
+  reasons: ['USER_MEDIA'],
+  justification: 'Procesar audio capturado de la pestaña',
+});
+```
+
+### 8.3 Voice Activity Detection (VAD)
+
+Para el "Modo Auto" del Settings tab: detectar inicio/fin real de la frase hablada (los cues están desalineados a veces).
+
+Recomendación: **Silero VAD** (modelo 1MB en ONNX, corre en WASM). Alternativa más simple: detección de RMS energy con threshold.
+
+---
+
+## 9. Reconocimiento y traducción
+
+### 9.1 Diccionario local
+
+Bundlear un JSON por idioma en `assets/dictionaries/`:
+
+```json
+{
+  "travel": {
+    "phonetic": "/ˈtrævəl/",
+    "translations": { "es": "viajar", "fr": "voyager" },
+    "level": "A2",
+    "definitions": {
+      "en": "To go from one place to another, especially over a long distance.",
+      "es": "Ir de un lugar a otro, especialmente a larga distancia."
+    }
+  }
+}
+```
+
+Top 5000 palabras del idioma objetivo es suficiente para >85% del vocabulario en TV.
+
+### 9.2 MWE Registry
+
+`assets/mwes/{lang}.json` — generado offline desde corpus (PHRASE.com, OpenSubtitles).
+
+Estructura idéntica al `SEGMENT_REGISTRY` del prototipo (`VideoPlayer.tsx:31`).
+
+### 9.3 Traducción dinámica (fallback)
+
+Si la palabra no está en el diccionario local, llamar al servicio configurado por el usuario. Cachear resultado en IndexedDB (`translations_cache`).
+
+```ts
+async function translate(text: string, source: string, target: string) {
+  const cached = await db.translations.get([text, source, target]);
+  if (cached) return cached.value;
+
+  const provider = await store.get('translateProvider');
+  const value = await providers[provider].translate(text, source, target);
+  await db.translations.put({ key: [text, source, target], value });
+  return value;
+}
+```
+
+### 9.4 TTS
+
+Default: `SpeechSynthesisUtterance` (gratis, offline en macOS/Windows con voces del sistema).
+
+Si el usuario configura una clave premium (ElevenLabs / Google TTS), usar esa.
+
+---
+
+## 10. Tokenización y MWE
+
+Reusar `tokenizeSentence` del prototipo (`VideoPlayer.tsx:79`). Pasarlo a `src/content/nlp/tokenize.ts`.
+
+Mejoras para producción:
+
+1. Usar `Intl.Segmenter` con `granularity: 'word'` — necesario para japonés, chino, tailandés.
+2. Cargar el MWE registry asincrónicamente y memoizarlo.
+3. Soportar `expanded` set persistido por sesión (no global).
+
+Las interacciones del prototipo se mapean 1:1:
+
+| Interacción | Implementación real |
+|---|---|
+| Hover sobre token | `onMouseEnter` con debounce 80ms para evitar flicker. |
+| Scroll abajo sobre MWE | `WheelEvent` con `preventDefault()`. Añadir `tok.key` a `expandedMWEs`. |
+| Scroll arriba sobre palabra hija | Quitar el padre de `expandedMWEs`. |
+| `Alt` sobre palabra | Ya implementado con `hoveredKeyRef`. Mantener. |
+| Clic en "Guardar" | `bridge.sendMessage('CREATE_CARD', ...)` al SW. |
+
+---
+
+## 11. Integración con Anki (AnkiConnect)
+
+### 11.1 Cliente
+
+```ts
+// src/background/anki-connect.ts
+const URL = 'http://127.0.0.1:8765';
+
+async function invoke<T>(action: string, params: object = {}): Promise<T> {
+  const res = await fetch(URL, {
+    method: 'POST',
+    body: JSON.stringify({ action, version: 6, params }),
+  });
+  const json = await res.json();
+  if (json.error) throw new Error(json.error);
+  return json.result;
+}
+
+export const anki = {
+  ping: () => invoke<string[]>('deckNames'),
+  decks: () => invoke<string[]>('deckNames'),
+  models: () => invoke<string[]>('modelNames'),
+  fields: (modelName: string) => invoke<string[]>('modelFieldNames', { modelName }),
+  addNote: (note: AnkiNote) => invoke<number>('addNote', { note }),
+  storeMediaFile: (filename: string, dataB64: string) =>
+    invoke<string>('storeMediaFile', { filename, data: dataB64 }),
+};
+```
+
+### 11.2 Construcción del payload
+
+A partir del `AnkiMapping` configurado por el usuario (mismo tipo que el prototipo, `types.ts:22`):
+
+```ts
+async function buildNote(ctx: CaptureContext, mapping: AnkiMapping): Promise<AnkiNote> {
+  const fields: Record<string, string> = {};
+  for (const [fieldName, source] of Object.entries(mapping.fieldSources)) {
+    fields[fieldName] = await resolveField(source, ctx);
+  }
+  return {
+    deckName: mapping.deckName,
+    modelName: mapping.modelName,
+    fields,
+    options: { allowDuplicate: false },
+    tags: ['kivara-lingo', ctx.platform, ctx.language],
+  };
+}
+```
+
+`resolveField` mapea cada `FieldSource` a su valor:
+
+| FieldSource | Cómo se resuelve |
+|---|---|
+| `selection` | El token que el usuario hizo clic. |
+| `cue` | Texto completo del cue de subtítulo. |
+| `dictionary` | Definición monolingüe del diccionario local. |
+| `translate` | Traducción al idioma nativo del usuario. |
+| `frame` | `<img src="kivara_<noteId>_frame.jpg">` después de `storeMediaFile`. |
+| `tabCapture` | `[sound:kivara_<noteId>_audio.mp3]` después de `storeMediaFile`. |
+| `tts` | `[sound:kivara_<token>_tts.mp3]` (TTS de la palabra sola). |
+| `manual` | Vacío, el usuario lo edita en Anki. |
+
+### 11.3 Errores comunes
+
+- **AnkiConnect no responde**: detectar timeout (3s) y mostrar al usuario "abre Anki para sincronizar". Encolar en IndexedDB y reintentar.
+- **Modelo no existe**: ofrecer "crear modelo Kivara Lingo" — usar `createModel` action.
+- **Duplicados**: `allowDuplicate: false`. Si Anki rechaza, mostrar "ya tienes esta tarjeta".
+
+---
+
+## 12. Modelo de datos y persistencia
+
+### 12.1 Zustand store (persistido en `chrome.storage.sync`)
+
+```ts
+// src/shared/store.ts
+export interface KivaraStore {
+  enabled: boolean;
+  panelOpen: boolean;
+  isPopupMode: boolean;
+  isDarkMode: boolean;
+  mode: 'learning' | 'reading';
+  subtitleStyles: SubtitleStyles;     // mismo tipo que prototipo
+  ankiMapping: AnkiMapping;
+  captureSettings: {
+    autoMode: boolean;
+    audioSource: 'tab' | 'mic';
+    frameMoment: 'start' | 'center' | 'end';
+    endDetect: 'vad' | 'cue';
+    bufferSize: number;
+    preRoll: number;
+    postRoll: number;
+    cueMerge: number;
+  };
+  cleanup: { hideUI: boolean; hideShadows: boolean };
+  shortcuts: Record<string, string>;
+  translateProvider: 'libretranslate' | 'deepl' | 'google' | 'none';
+  translateApiKey: string;             // cifrado con WebCrypto
+  knownWords: Set<string>;             // localmente — IndexedDB
+  savedTokens: Set<string>;            // hash de notas creadas para deduplicar UI
+}
+```
+
+### 12.2 IndexedDB (Dexie)
+
+```ts
+// src/shared/db.ts
+export const db = new Dexie('kivara-lingo');
+db.version(1).stores({
+  translations: '[text+source+target], updatedAt',
+  audioCache: 'cueId, blob, createdAt',
+  notes: '++id, noteId, deckName, createdAt',
+  knownWords: '[word+lang]',
+});
+```
+
+---
+
+## 13. UI: del prototipo a la realidad
+
+| Componente del prototipo | Destino en la extensión |
+|---|---|
+| `App.tsx` (navbar mock) | **Eliminar.** El navegador real es la pestaña. |
+| `VideoPlayer.tsx` | El video viene de la plataforma. Reusar **solo** la lógica de subtítulo overlay (líneas que renderizan tokens, popover, scroll handler). Pasar a `content/ui/SubtitleOverlay.tsx`. |
+| `WordPopover` (interno de VideoPlayer) | Extraer a `content/ui/WordPopover.tsx`. |
+| `ExtensionPanel.tsx` | `content/ui/SidePanel.tsx` (mismo layout, mismas tabs). |
+| `SubtitlesTab.tsx` | Idem. Estilos guardados van al store, propagados al overlay. |
+| `CardsTab.tsx` | Idem. La conexión AnkiConnect ahora es real (no mock). |
+| `SettingsTab.tsx` | Idem. Captura settings ahora controlan el orquestador real. |
+| `KivaraLingoLogo.tsx` | Reusar tal cual en SidePanel y popup. |
+| `Toaster` (sonner) | Reusar dentro del shadow. |
+
+**Estilos:** copiar `src/styles/theme.css` tal cual. Las clases `sl-input`, `sl-select`, `sl-range` son críticas y deben funcionar dentro del Shadow DOM (Tailwind v4 con `@layer base` se preserva).
+
+**Modo Lectura:** activar el flag `mode === 'reading'` ya implementado. Oculta popovers y deja solo el subtítulo estilizado.
+
+---
+
+## 14. Atajos de teclado
+
+Definidos en `manifest.json > commands`. El service worker los recibe vía `chrome.commands.onCommand`:
+
+```ts
+chrome.commands.onCommand.addListener(async (command) => {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  bridge.sendMessage(command, {}, `content-script@${tab.id}`);
+});
+```
+
+El content script reacciona al mensaje y dispara la acción local (guardar la palabra bajo el cursor, repetir cue, etc).
+
+---
+
+## 15. Permisos, privacidad y seguridad
+
+1. **Datos del usuario**: nunca salen del navegador excepto cuando el usuario configura un servicio externo (traducción / TTS premium). Esto debe estar **explícitamente declarado en la página de Options** y en la store listing.
+2. **Audio capturado**: nunca persistir más allá del cue actual. Borrar buffer rolling al cambiar de pestaña/video.
+3. **Claves API**: cifrar con `crypto.subtle` antes de guardar. Clave derivada de un secret bundleado + fingerprint de la instalación.
+4. **AnkiConnect**: solo acepta conexiones de localhost. Pero un sitio malicioso podría abusar si la extensión expone wrappers. **No exponer ningún wrapper a `window`**.
+5. **Content Security Policy**: MV3 obliga a `'self'` para scripts. No `eval`, no `new Function`.
+6. **DRM**: respetar. No intentar capturar frames de video DRM-protected si el navegador lo bloquea.
+
+---
+
+## 16. Performance y límites
+
+| Métrica | Objetivo |
+|---|---|
+| Tiempo de inyección al cargar página | <200ms |
+| Latencia hover → popover visible | <100ms |
+| Latencia clic → tarjeta en Anki | <2s (incluyendo audio + frame) |
+| Memoria del content script | <50MB |
+| Tamaño del bundle (zip publicado) | <5MB sin diccionarios bundleados, <15MB con uno |
+| FPS del video con overlay activo | ≥ 60 (no degradar) |
+
+**Optimizaciones obligatorias:**
+
+- Lazy load de tabs del panel (Cards/Settings solo al abrir).
+- Memoizar `tokenizeSentence` por cue.
+- `IntersectionObserver` para no renderizar el panel cuando está oculto.
+- Throttle de `onCueChange` a 30 Hz máximo.
+
+---
+
+## 17. Testing
+
+| Capa | Tooling | Qué probar |
+|---|---|---|
+| Unit | Vitest + Testing Library | tokenizer, dictionary lookup, AnkiConnect client (con `msw` para mockear `fetch`). |
+| Integración | Vitest + jsdom + `webextension-mock-browser` | flujos de mensajería content↔SW. |
+| E2E | **Playwright** con extensión cargada | sobre páginas estáticas que simulen Netflix/YouTube (no contra producción para no violar TOS). |
+| Manual | checklist por plataforma | hover, scroll, Alt, guardar, cambiar tema, dock/popup. |
+
+---
+
+## 18. Build, empaquetado y publicación
+
+### 18.1 Vite config (resumen)
+
+```ts
+// vite.config.ts
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+import { crx } from '@crxjs/vite-plugin';
+import manifest from './manifest.json' assert { type: 'json' };
+
+export default defineConfig({
+  plugins: [react(), crx({ manifest })],
+  build: { rollupOptions: { input: { /* popup, options, offscreen */ } } },
+});
+```
+
+### 18.2 Scripts
+
+```json
+{
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "lint": "eslint src --ext .ts,.tsx",
+    "test": "vitest",
+    "e2e": "playwright test",
+    "package:chrome": "vite build && cd dist && zip -r ../kivara-lingo-chrome.zip .",
+    "package:firefox": "vite build && web-ext build --source-dir=dist --artifacts-dir=web-ext-artifacts"
+  }
+}
+```
+
+### 18.3 Distribución
+
+- **Chrome Web Store**: cuenta de developer ($5 one-time). Subir zip producido por `package:chrome`. Review típico: 1-3 días.
+- **Firefox Add-ons (AMO)**: gratis. `web-ext sign` firma automáticamente.
+- **Edge Add-ons**: gratis, acepta el mismo zip de Chrome.
+
+---
+
+## 19. Roadmap por fases
+
+### Fase 1 — MVP (4 semanas)
+- Manifest V3 + content script + service worker base.
+- Adapter para **YouTube** únicamente (más fácil: `<video>.textTracks`).
+- Subtitle overlay con tokenización.
+- Diccionario inglés bundled (top 5000).
+- Hover popover + clic guardar (sin audio, sin frame).
+- AnkiConnect: `addNote` con `cue + selection + translation`.
+- Settings básico: estilos de subtítulo + tema.
+
+### Fase 2 — Captura completa (3 semanas)
+- Captura de audio del cue (offscreen + MediaRecorder).
+- Captura de frame (canvas + offscreen).
+- Modo Auto vs Manual.
+- VAD para alineación.
+- Atajos de teclado.
+
+### Fase 3 — Plataformas (4 semanas)
+- Netflix adapter (más complejo: interceptar fetch).
+- HBO Max / Max.
+- Disney+, Prime Video.
+- Modo Lectura.
+
+### Fase 4 — Pulido (2 semanas)
+- Diccionarios para 5 idiomas más.
+- Traducción dinámica (LibreTranslate self-host + DeepL).
+- Deduplicación inteligente.
+- Página de Options completa.
+- Onboarding al primer uso.
+
+### Fase 5 — Lanzamiento
+- Beta cerrada (50 usuarios).
+- Web Store listings.
+- Landing en kivara.app/lingo.
+
+---
+
+## 20. Glosario
+
+- **Cue**: una entrada de subtítulo (un `<p>` en TTML o un bloque WebVTT) — un texto con `start` y `end` en segundos.
+- **MWE**: Multi-Word Expression. Expresión de varias palabras con significado idiomático (`these days`, `kick the bucket`).
+- **VAD**: Voice Activity Detection. Detectar dónde hay habla en un buffer de audio.
+- **AnkiConnect**: addon de Anki que expone una API HTTP en `localhost:8765`.
+- **Note type / Modelo**: plantilla de tarjeta en Anki, define qué campos tiene.
+- **TTML / WebVTT**: formatos de subtítulos. TTML es XML (Netflix, Prime); WebVTT es texto plano (YouTube, HTML5 estándar).
+- **MAIN world / ISOLATED world**: contextos JS de un content script. ISOLATED no comparte `window` con la página; MAIN sí.
+- **Shadow DOM**: árbol DOM aislado. Los estilos de la página no afectan el contenido del shadow, ni viceversa.
+
+---
+
+**Última actualización:** 2026-05-14 · **Versión del prototipo de referencia:** 0.1.0
