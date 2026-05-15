@@ -1,4 +1,6 @@
-@custom-variant dark (&:is(.dark *));
+/* The `dark` custom variant is declared in tailwind.css alongside
+ * `@import 'tailwindcss'` so Tailwind picks it up. Defining it here had no
+ * effect — `dark:*` utilities fell back to `@media (prefers-color-scheme: dark)`. */
 
 :root, :host {
   --font-size: 16px;
