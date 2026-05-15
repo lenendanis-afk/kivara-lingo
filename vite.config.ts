@@ -8,7 +8,7 @@ import manifest from './manifest.json'
 function figmaAssetResolver() {
   return {
     name: 'figma-asset-resolver',
-    resolveId(id) {
+    resolveId(id: string) {
       if (id.startsWith('figma:asset/')) {
         const filename = id.replace('figma:asset/', '')
         return path.resolve(__dirname, 'src/assets', filename)
@@ -31,7 +31,12 @@ export default defineConfig({
     },
   },
   build: {
-    minify: false
+    minify: false,
+    rollupOptions: {
+      input: {
+        offscreen: path.resolve(__dirname, 'src/offscreen/index.html'),
+      },
+    },
   },
 
   // File types to support raw imports. Never add .css, .tsx, or .ts files to this.

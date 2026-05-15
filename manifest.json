@@ -12,13 +12,7 @@
   ],
   "host_permissions": [
     "http://127.0.0.1:8765/*",
-    "*://*.netflix.com/*",
-    "*://*.youtube.com/*",
-    "*://*.primevideo.com/*",
-    "*://*.disneyplus.com/*",
-    "*://*.max.com/*",
-    "*://*.hbomax.com/*",
-    "*://*.udemy.com/*"
+    "*://*.youtube.com/*"
   ],
   "background": {
     "service_worker": "src/background/service-worker.ts",
@@ -27,13 +21,7 @@
   "content_scripts": [
     {
       "matches": [
-        "*://*.netflix.com/*",
-        "*://*.youtube.com/*",
-        "*://*.primevideo.com/*",
-        "*://*.disneyplus.com/*",
-        "*://*.max.com/*",
-        "*://*.hbomax.com/*",
-        "*://*.udemy.com/*"
+        "*://*.youtube.com/*"
       ],
       "js": [
         "src/content/index.tsx"
@@ -42,7 +30,18 @@
       "run_at": "document_idle"
     }
   ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "src/assets/dictionaries/*",
+        "src/offscreen/*"
+      ],
+      "matches": ["<all_urls>"]
+    }
+  ],
   "action": {
+    "default_popup": "src/popup/index.html",
+    "default_title": "Kivara Lingo",
     "default_icon": {
       "16": "src/assets/icons/icon-16.png",
       "32": "src/assets/icons/icon-32.png",
@@ -82,6 +81,9 @@
         "mac": "Alt+V"
       },
       "description": "Recapture video frame manually"
+    },
+    "show_translation": {
+      "description": "Show translation for current hovered token"
     }
   },
   "icons": {

@@ -1,32 +1,61 @@
-import React, { useState, useEffect } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Toaster, toast } from 'sonner';
 import { CheckCircle2 } from 'lucide-react';
+import { sendMessage } from 'webext-bridge/content-script';
 import { SidePanel } from './SidePanel';
 import { SubtitleOverlay } from './SubtitleOverlay';
-import { SubtitleStyles, AnkiMapping } from '../../app/types';
-import { sendMessage } from 'webext-bridge/content-script';
+import { useKivaraStore } from '../../shared/store';
+import { captureFrame } from '../capture/frame';
+import type { CreateCardRequest, CreateCardResponse } from '../../shared/types';
+import type { SubtitleSource } from '../platform-adapters/types';
 
-export function App({ adapter, videoOverlayRoot }: { adapter: any, videoOverlayRoot?: HTMLElement | null }) {
-  const [isPanelOpen, setIsPanelOpen] = useState(false);
-  const [isDarkMode, setIsDarkMode] = useState(true);
-  const [activeCue, setActiveCue] = useState<{text: string} | null>(null);
-  
+interface ActiveCue {
+  id: string;
+  text: string;
+  start?: number;
+  end?: number;
+  language?: string;
+}
+
+interface AppProps {
+  adapter: SubtitleSource | null;
+  videoElement: HTMLVideoElement | null;
+  videoOverlayRoot?: HTMLElement | null;
+}
+
+export function App({ adapter, videoElement, videoOverlayRoot }: AppProps) {
+  const {
+    enabled,
+    panelOpen,
+    isPopupMode,
+    isDarkMode,
+    mode,
+    subtitleStyles,
+    ankiMapping,
+    setPanelOpen,
+    setIsPopupMode,
+    setIsDarkMode,
+    setSubtitleStyles,
+    setAnkiMapping,
+  } = useKivaraStore();
+
+  const [activeCue, setActiveCue] = useState<ActiveCue | null>(null);
+  const [saveTick, setSaveTick] = useState<number | null>(null);
+  const cueLanguageRef = useRef('en');
+
+  // Sync dark mode on hosts + overlay root so theme.css `.dark` selector works.
   useEffect(() => {
     const mainHost = document.getElementById('kivara-lingo-host');
     const mainRoot = mainHost?.shadowRoot?.getElementById('kivara-lingo-react-root');
     const videoHost = document.getElementById('kivara-lingo-video-host');
     const videoRoot = videoHost?.shadowRoot?.getElementById('kivara-lingo-video-react-root');
 
-    const elementsToUpdate = [
-      mainHost,
-      mainRoot,
-      videoHost,
-      videoRoot,
-      videoOverlayRoot
-    ].filter(Boolean) as HTMLElement[];
+    const elementsToUpdate = [mainHost, mainRoot, videoHost, videoRoot, videoOverlayRoot].filter(
+      Boolean,
+    ) as HTMLElement[];
 
-    elementsToUpdate.forEach(el => {
+    elementsToUpdate.forEach((el) => {
       if (isDarkMode) {
         el.classList.add('dark');
         if (el.style) el.style.colorScheme = 'dark';
@@ -37,108 +66,165 @@ export function App({ adapter, videoOverlayRoot }: { adapter: any, videoOverlayR
     });
   }, [isDarkMode, videoOverlayRoot]);
 
+  // Listen to adapter cue changes.
   useEffect(() => {
-    if (adapter) {
-      adapter.onCueChange((cues: any[]) => {
-        if (cues.length > 0) {
-          setActiveCue(cues[0]);
-        } else {
-          setActiveCue(null);
-        }
+    if (!adapter) return;
+    adapter.onCueChange((cues) => {
+      if (cues.length === 0) {
+        setActiveCue(null);
+        return;
+      }
+      const first = cues[0];
+      cueLanguageRef.current = first.language || 'en';
+      setActiveCue({
+        id: first.id,
+        text: first.text,
+        start: first.start,
+        end: first.end,
+        language: first.language,
       });
-      const initialCue = adapter.getActiveCue?.();
-      if (initialCue) setActiveCue(initialCue);
+    });
+    const initialCue = adapter.getActiveCue?.();
+    if (initialCue) {
+      cueLanguageRef.current = initialCue.language || 'en';
+      setActiveCue({
+        id: initialCue.id,
+        text: initialCue.text,
+        start: initialCue.start,
+        end: initialCue.end,
+        language: initialCue.language,
+      });
     }
   }, [adapter]);
 
+  // Bridge runtime messages (from background) → local actions.
   useEffect(() => {
-    const handleMessage = (msg: any) => {
-      if (msg.type === 'TOGGLE_PANEL') {
-        setIsPanelOpen(prev => !prev);
+    const handler = (msg: { type?: string; command?: string }) => {
+      if (msg?.type === 'TOGGLE_PANEL') {
+        setPanelOpen(!useKivaraStore.getState().panelOpen);
+      } else if (msg?.type === 'RUN_COMMAND') {
+        switch (msg.command) {
+          case 'save_word':
+            setSaveTick(Date.now());
+            break;
+          case 'toggle_subtitles':
+            // Phase 2: hide overlay
+            break;
+          case 'repeat_phrase':
+            if (videoElement && activeCue?.start != null) {
+              videoElement.currentTime = activeCue.start / 1000;
+              void videoElement.play().catch(() => {});
+            }
+            break;
+          case 'show_translation':
+            // No-op for now: translation already shows on hover.
+            break;
+          default:
+            break;
+        }
       }
     };
-    chrome.runtime.onMessage.addListener(handleMessage);
-    return () => chrome.runtime.onMessage.removeListener(handleMessage);
-  }, []);
+    chrome.runtime.onMessage.addListener(handler);
+    return () => chrome.runtime.onMessage.removeListener(handler);
+  }, [activeCue, setPanelOpen, videoElement]);
 
-  const [subtitleStyles, setSubtitleStyles] = useState<SubtitleStyles>({
-    fontSize: 32,
-    color: '#FCD34D',
-    backgroundColor: '#000000',
-    backgroundOpacity: 60,
-    position: 'bottom',
-    verticalOffset: 85,
-    fontWeight: 'bold',
-    textShadow: 80,
-  });
+  const handleSaveCard = async (token: string | undefined, sentence: string) => {
+    if (!enabled) return;
+    const tokenValue = token?.trim() || sentence.trim();
+    if (!tokenValue) return;
 
-  const [ankiMapping, setAnkiMapping] = useState<AnkiMapping>({
-    ankiUrl: 'http://127.0.0.1:8765',
-    deckName: 'Vocabulario Inglés',
-    modelName: 'Basic', // 'KivaraLingo'
-    fieldSources: {},
-  });
+    let frameDataUrl: string | null = null;
+    if (videoElement) {
+      frameDataUrl = await captureFrame(videoElement);
+    }
 
-  const handleSaveCard = (token?: string, sentence?: string) => {
-    const saved = token || "frase";
+    const request: CreateCardRequest = {
+      token: tokenValue,
+      sentence,
+      frame: frameDataUrl ?? undefined,
+      cueStart: activeCue?.start,
+      cueEnd: activeCue?.end,
+      language: cueLanguageRef.current,
+      platform: adapter?.platform,
+    };
 
-    sendMessage('CREATE_CARD', { token: saved, sentence: sentence || '' }).then(() => {
-      toast.custom((id) => (
-        <div className="flex items-center gap-2.5 bg-zinc-900/95 backdrop-blur-xl border border-zinc-700/60 rounded-lg shadow-2xl px-3 py-2.5 min-w-[280px]">
-          <div className="w-7 h-7 rounded-md bg-emerald-500/15 ring-1 ring-emerald-500/30 flex items-center justify-center shrink-0">
-            <CheckCircle2 size={14} className="text-emerald-400" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="text-[12px] font-semibold text-white leading-tight">Tarjeta guardada</div>
-            <div className="text-[10px] text-zinc-400 leading-tight mt-0.5 truncate">
-              <span className="font-mono text-indigo-300">{saved}</span>
-              <span className="text-zinc-500"> → </span>
-              {ankiMapping.deckName}
+    try {
+      const response = (await sendMessage('CREATE_CARD', request, 'background')) as CreateCardResponse;
+      if (response?.ok) {
+        toast.custom(
+          (id) => (
+            <div className="flex items-center gap-2.5 bg-zinc-900/95 backdrop-blur-xl border border-zinc-700/60 rounded-lg shadow-2xl px-3 py-2.5 min-w-[280px]">
+              <div className="w-7 h-7 rounded-md bg-emerald-500/15 ring-1 ring-emerald-500/30 flex items-center justify-center shrink-0">
+                <CheckCircle2 size={14} className="text-emerald-400" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-[12px] font-semibold text-white leading-tight">Tarjeta guardada</div>
+                <div className="text-[10px] text-zinc-400 leading-tight mt-0.5 truncate">
+                  <span className="font-mono text-indigo-300">{tokenValue}</span>
+                  <span className="text-zinc-500"> → </span>
+                  {ankiMapping.deckName}
+                </div>
+              </div>
+              <button
+                onClick={() => toast.dismiss(id)}
+                className="text-[10px] font-medium text-zinc-500 hover:text-zinc-300 px-1.5 py-0.5 rounded transition-colors shrink-0"
+              >
+                OK
+              </button>
             </div>
-          </div>
-          <button onClick={() => toast.dismiss(id)} className="text-[10px] font-medium text-zinc-500 hover:text-zinc-300 px-1.5 py-0.5 rounded transition-colors shrink-0">
-            OK
-          </button>
-        </div>
-      ), { duration: 3200 });
-    }).catch(err => {
-      console.error(err);
-      toast.error('Error guardando en Anki: ' + err.message);
-    });
+          ),
+          { duration: 3200 },
+        );
+        if (response.warnings?.length) {
+          toast.message(response.warnings.join(' · '));
+        }
+      } else {
+        toast.error(response?.error ?? 'Error guardando en Anki');
+      }
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : 'desconocido';
+      toast.error(`Error guardando en Anki: ${reason}`);
+    }
   };
 
+  const overlayPortal = useMemo(() => {
+    if (!videoOverlayRoot || !enabled) return null;
+    return createPortal(
+      <div
+        className={`absolute inset-0 pointer-events-none ${isDarkMode ? 'dark' : ''}`}
+        style={{ colorScheme: isDarkMode ? 'dark' : 'light' }}
+      >
+        <SubtitleOverlay
+          subtitleStyles={subtitleStyles}
+          cue={activeCue}
+          mode={mode}
+          saveRequestKey={saveTick}
+          onSaveCard={handleSaveCard}
+        />
+      </div>,
+      videoOverlayRoot,
+    );
+  }, [activeCue, enabled, isDarkMode, mode, saveTick, subtitleStyles, videoOverlayRoot]);
+
   return (
-    <div className={`font-sans text-zinc-900 dark:text-zinc-100 pointer-events-none ${isDarkMode ? 'dark' : ''}`} style={{ position: 'fixed', inset: 0, zIndex: 999999, colorScheme: isDarkMode ? 'dark' : 'light' }}>
+    <div
+      className={`font-sans text-zinc-900 dark:text-zinc-100 pointer-events-none ${isDarkMode ? 'dark' : ''}`}
+      style={{ position: 'fixed', inset: 0, zIndex: 2147483646, colorScheme: isDarkMode ? 'dark' : 'light' }}
+    >
       <div className="pointer-events-auto">
         <Toaster position="top-center" theme={isDarkMode ? 'dark' : 'light'} />
       </div>
 
-      {videoOverlayRoot ? 
-        createPortal(
-          <div className={`absolute inset-0 pointer-events-none flex items-center justify-center ${isDarkMode ? 'dark' : ''}`} style={{ colorScheme: isDarkMode ? 'dark' : 'light' }}>
-            <SubtitleOverlay 
-                subtitleStyles={subtitleStyles}
-                cue={activeCue}
-                onSaveCard={handleSaveCard}
-              />
-          </div>,
-          videoOverlayRoot
-        ) : (
-          <div className={`absolute inset-0 pointer-events-none flex items-center justify-center ${isDarkMode ? 'dark' : ''}`} style={{ colorScheme: isDarkMode ? 'dark' : 'light' }}>
-            <SubtitleOverlay 
-                subtitleStyles={subtitleStyles}
-                cue={activeCue}
-                onSaveCard={handleSaveCard}
-              />
-          </div>
-        )
-      }
+      {overlayPortal}
 
       <div className="pointer-events-auto">
-        {isPanelOpen && (
-          <SidePanel 
-            isPopupMode={true} 
-            togglePopupMode={() => setIsPanelOpen(false)} 
+        {enabled && panelOpen && (
+          <SidePanel
+            isPopupMode={isPopupMode}
+            togglePopupMode={() => {
+              if (isPopupMode) setPanelOpen(false);
+              else setIsPopupMode(!isPopupMode);
+            }}
             isDarkMode={isDarkMode}
             toggleDarkMode={() => setIsDarkMode(!isDarkMode)}
             styles={subtitleStyles}
@@ -146,13 +232,13 @@ export function App({ adapter, videoOverlayRoot }: { adapter: any, videoOverlayR
             mapping={ankiMapping}
             setMapping={setAnkiMapping}
             mockData={{
-              targetSentence: "",
-              nativeSentence: "",
-              word: "",
-              translation: "",
-              phonetic: "",
-              bilingual: "",
-              monolingual: ""
+              targetSentence: activeCue?.text ?? '',
+              nativeSentence: '',
+              word: '',
+              translation: '',
+              phonetic: '',
+              bilingual: '',
+              monolingual: '',
             }}
           />
         )}
@@ -160,4 +246,3 @@ export function App({ adapter, videoOverlayRoot }: { adapter: any, videoOverlayR
     </div>
   );
 }
-

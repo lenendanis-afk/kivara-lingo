@@ -1,6 +1,9 @@
 import React from 'react';
 import { Volume2, ChevronsLeftRight, Link2, Search, Plus, Eye, BookOpen, Check } from 'lucide-react';
-import { SEGMENT_REGISTRY, SegmentMeta } from '../utils/tokenizer';
+import type { DictionaryEntry } from '../../shared/types';
+import { lookupDictionary } from '../nlp/dictionary';
+
+type SegmentMeta = DictionaryEntry;
 
 interface WordPopoverProps {
   visible: boolean;
@@ -17,9 +20,13 @@ interface WordPopoverProps {
 }
 
 function lookup(token: string): SegmentMeta {
-  return SEGMENT_REGISTRY[token.toLowerCase()] ?? {
-    token, type: token.includes(' ') ? 'phrase' : 'word', translation: '—',
-  };
+  return (
+    lookupDictionary(token) ?? {
+      token,
+      type: token.includes(' ') ? 'phrase' : 'word',
+      translation: '—',
+    }
+  );
 }
 
 const LEVEL_COLOR: Record<string, string> = {

@@ -1,23 +1,28 @@
 import React, { useState } from 'react';
 import {
   Keyboard, EyeOff, ChevronDown, Mic, Image as ImageIcon, Wand2,
-  SlidersHorizontal,
+  SlidersHorizontal, BookOpen,
 } from 'lucide-react';
-
-type AudioSource = 'tab' | 'mic';
-type FrameMoment = 'start' | 'center' | 'end';
-type EndDetect = 'vad' | 'cue';
+import { useKivaraStore } from '../../../shared/store';
 
 export function SettingsTab() {
-  const [autoMode, setAutoMode] = useState(true);
-  const [hideUI, setHideUI] = useState(true);
-  const [hideShadows, setHideShadows] = useState(true);
+  const { capture, setCapture, cleanup, setCleanup, mode, setMode } = useKivaraStore();
   const [showAdvanced, setShowAdvanced] = useState(false);
 
-  const [audioSource, setAudioSource] = useState<AudioSource>('tab');
-  const [frameMoment, setFrameMoment] = useState<FrameMoment>('center');
-  const [endDetect, setEndDetect] = useState<EndDetect>('vad');
-  const [bufferSize, setBufferSize] = useState(30);
+  const autoMode = capture.autoMode;
+  const setAutoMode = (v: boolean) => setCapture({ ...capture, autoMode: v });
+  const audioSource = capture.audioSource;
+  const setAudioSource = (v: typeof capture.audioSource) => setCapture({ ...capture, audioSource: v });
+  const frameMoment = capture.frameMoment;
+  const setFrameMoment = (v: typeof capture.frameMoment) => setCapture({ ...capture, frameMoment: v });
+  const endDetect = capture.endDetect;
+  const setEndDetect = (v: typeof capture.endDetect) => setCapture({ ...capture, endDetect: v });
+  const bufferSize = capture.bufferSize;
+  const setBufferSize = (v: number) => setCapture({ ...capture, bufferSize: v });
+  const hideUI = cleanup.hideUI;
+  const setHideUI = (v: boolean) => setCleanup({ ...cleanup, hideUI: v });
+  const hideShadows = cleanup.hideShadows;
+  const setHideShadows = (v: boolean) => setCleanup({ ...cleanup, hideShadows: v });
 
   return (
     <div className="flex flex-col h-full bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 overflow-y-auto">
@@ -83,6 +88,16 @@ export function SettingsTab() {
               </Row>
             </div>
           )}
+        </Section>
+
+        {/* Modo */}
+        <Section icon={<BookOpen size={10} />} title="Modo" headerRight={null}>
+          <Row label="Modo Lectura">
+            <Toggle on={mode === 'reading'} onChange={(v) => setMode(v ? 'reading' : 'learning')} />
+          </Row>
+          <p className="text-[10px] text-zinc-500 dark:text-zinc-500 leading-snug -mt-0.5">
+            En lectura ocultamos los popovers; sigues viendo los subtítulos estilizados.
+          </p>
         </Section>
 
         {/* Limpieza visual */}

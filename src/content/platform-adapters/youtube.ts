@@ -1,70 +1,147 @@
-import { SubtitleSource, SubtitleCue, CueListener } from './types';
+import type { SubtitleSource, SubtitleCue, CueListener } from './types';
 
+/**
+ * YouTube adapter.
+ *
+ * Strategy:
+ *  1) Prefer the HTML5 `<video>.textTracks` API. YouTube exposes timed-text
+ *     tracks once captions are enabled by the user. We switch the active
+ *     track to `hidden` to suppress YouTube's own rendering and listen to
+ *     `cuechange` for precise cue boundaries.
+ *  2) Fall back to polling YouTube's caption DOM (`.captions-text`) so the
+ *     adapter still works on live streams or when YouTube renders captions
+ *     without exposing a TextTrack.
+ *  3) Inject CSS to permanently hide YouTube's native caption window.
+ */
 export function attachYouTube(): SubtitleSource | null {
-  const video = document.querySelector('video');
-  if (!video) return null;
-
-  const captionContainer = document.querySelector('.ytp-caption-window-container');
-  if (!captionContainer) {
-    // Sometimes it loads late, but for now we expect it to exist or we retry later
-  }
+  const videoEl = document.querySelector<HTMLVideoElement>('video');
+  if (!videoEl) return null;
+  const video: HTMLVideoElement = videoEl;
 
   const listeners: CueListener[] = [];
   let currentActiveCue: SubtitleCue | null = null;
-  let isNativeHidden = false;
 
-  let parseInterval: any = null;
+  let activeTrack: TextTrack | null = null;
+  let pollHandle: number | null = null;
 
-  const parseCues = () => {
-    // YouTube's active subtitles logic: look at .captions-text
-    const segments = document.querySelectorAll('.captions-text');
-    if (segments.length === 0) {
-      if (currentActiveCue !== null) {
-        currentActiveCue = null;
-        listeners.forEach(l => l([]));
-      }
+  const HIDE_STYLE_ID = 'kivara-lingo-yt-hide';
+
+  function emit(cue: SubtitleCue | null) {
+    currentActiveCue = cue;
+    listeners.forEach((l) => l(cue ? [cue] : []));
+  }
+
+  function pushFromText(text: string) {
+    const trimmed = text.trim();
+    if (!trimmed) {
+      if (currentActiveCue) emit(null);
       return;
     }
-
-    // Join text from all current segments using textContent
-    const text = Array.from(segments).map(el => el.textContent || '').join('\n').trim();
-    if (!text) {
-      if (currentActiveCue !== null) {
-        currentActiveCue = null;
-        listeners.forEach(l => l([]));
-      }
-      return;
-    }
-
+    if (currentActiveCue && currentActiveCue.text === trimmed) return;
     const now = video.currentTime * 1000;
-    
-    // Avoid re-emitting the same text
-    if (currentActiveCue && currentActiveCue.text === text) {
-      currentActiveCue.end = now + 1000;
-      return;
-    }
-
-    currentActiveCue = {
-      id: Math.random().toString(),
+    emit({
+      id: `${now}`,
       start: now,
       end: now + 2000,
-      text: text,
-      language: 'en'
-    };
+      text: trimmed,
+      language: activeTrack?.language || 'en',
+    });
+  }
 
-    listeners.forEach(l => l([currentActiveCue!]));
-  };
+  function onCueChange() {
+    if (!activeTrack) return;
+    const cues = activeTrack.activeCues;
+    if (!cues || cues.length === 0) {
+      if (currentActiveCue) emit(null);
+      return;
+    }
+    const text = Array.from(cues)
+      .map((c) => (c as VTTCue).text || '')
+      .join('\n')
+      .replace(/<[^>]+>/g, '')
+      .trim();
+    if (!text) {
+      if (currentActiveCue) emit(null);
+      return;
+    }
+    const first = cues[0] as VTTCue;
+    const last = cues[cues.length - 1] as VTTCue;
+    emit({
+      id: first.id || `${first.startTime}`,
+      start: first.startTime * 1000,
+      end: last.endTime * 1000,
+      text,
+      language: activeTrack.language || 'en',
+    });
+  }
 
-  // YouTube dynamically recreates caption containers, observing the whole body or polling is occasionally more robust
-  parseInterval = setInterval(parseCues, 100);
+  function bindTrack(track: TextTrack) {
+    if (activeTrack === track) return;
+    if (activeTrack) activeTrack.oncuechange = null;
+    activeTrack = track;
+    track.mode = 'hidden';
+    track.oncuechange = onCueChange;
+    onCueChange();
+  }
 
-  // To hide native subtitles on YouTube, we must inject CSS
-  const styleId = 'kivara-lingo-yt-hide';
-  
+  function pickTextTrack(): TextTrack | null {
+    const tracks = Array.from(video.textTracks ?? []);
+    return (
+      tracks.find((t) => (t.kind === 'subtitles' || t.kind === 'captions') && t.mode === 'showing') ??
+      tracks.find((t) => t.kind === 'subtitles' || t.kind === 'captions') ??
+      null
+    );
+  }
+
+  function pollDom() {
+    if (activeTrack && activeTrack.activeCues && activeTrack.activeCues.length > 0) return;
+    const segments = document.querySelectorAll('.captions-text');
+    if (!segments.length) {
+      if (currentActiveCue) emit(null);
+      return;
+    }
+    const text = Array.from(segments)
+      .map((el) => el.textContent || '')
+      .join('\n');
+    pushFromText(text);
+  }
+
+  function startPolling() {
+    if (pollHandle != null) return;
+    pollHandle = window.setInterval(pollDom, 120);
+  }
+
+  function tryAttach() {
+    const track = pickTextTrack();
+    if (track) bindTrack(track);
+  }
+
+  // Initial attempt + listen for added tracks
+  tryAttach();
+  if (video.textTracks?.addEventListener) {
+    video.textTracks.addEventListener('addtrack', tryAttach);
+    video.textTracks.addEventListener('change', tryAttach);
+  }
+  // The DOM-based fallback always runs as a safety net.
+  startPolling();
+
+  function ensureHideStyle() {
+    if (document.getElementById(HIDE_STYLE_ID)) return;
+    const style = document.createElement('style');
+    style.id = HIDE_STYLE_ID;
+    style.textContent = [
+      '.ytp-caption-window-container { opacity: 0 !important; pointer-events: none !important; }',
+      '.caption-window { opacity: 0 !important; pointer-events: none !important; }',
+      'video::cue { opacity: 0 !important; }',
+    ].join('\n');
+    document.head.appendChild(style);
+  }
+
   return {
     platform: 'youtube',
     onCueChange(listener) {
       listeners.push(listener);
+      if (currentActiveCue) listener([currentActiveCue]);
     },
     getCurrentTime() {
       return video.currentTime * 1000;
@@ -76,21 +153,13 @@ export function attachYouTube(): SubtitleSource | null {
       video.currentTime = timeMs / 1000;
     },
     hideNativeSubtitles() {
-      isNativeHidden = true;
-      let style = document.getElementById(styleId);
-      if (!style) {
-        style = document.createElement('style');
-        style.id = styleId;
-        style.textContent = '.caption-window { opacity: 0 !important; }'; // Hide the window but keep DOM updates
-        document.head.appendChild(style);
-      }
+      ensureHideStyle();
+      if (activeTrack) activeTrack.mode = 'hidden';
     },
     showNativeSubtitles() {
-      isNativeHidden = false;
-      const style = document.getElementById(styleId);
-      if (style) {
-        style.remove();
-      }
-    }
+      const style = document.getElementById(HIDE_STYLE_ID);
+      if (style) style.remove();
+      if (activeTrack) activeTrack.mode = 'showing';
+    },
   };
 }

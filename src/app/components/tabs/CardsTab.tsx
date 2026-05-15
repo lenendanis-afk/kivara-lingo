@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { sendMessage } from 'webext-bridge/content-script';
 import { AnkiMapping, FieldSource } from '../../types';
+import type { AnkiListsResponse, AnkiFieldsResponse, AnkiPingResponse } from '../../../shared/types';
 import {
   RefreshCw, RotateCcw, Volume2, Camera, Wand2, Layers,
   ChevronDown, Loader2, AlertCircle, Server, Database, FileText, Plug,
@@ -19,13 +21,11 @@ interface CardsTabProps {
   };
 }
 
-const MOCK_DECKS = ['Vocabulario Inglés', 'Netflix & HBO Imports', 'Default'];
-
-const MOCK_NOTE_TYPES: Record<string, string[]> = {
+const FALLBACK_DECKS = ['Vocabulario Inglés', 'Default'];
+const FALLBACK_MODELS = ['KivaraLingo', 'Basic'];
+const FALLBACK_FIELDS: Record<string, string[]> = {
   'KivaraLingo': ['word', 'phonetic', 'sentence', 'translation', 'bilingual', 'monolingual', 'picture', 'sentence audio', 'word audio'],
-  'Básico (y reverso)': ['Anverso', 'Reverso'],
-  'Cloze': ['Texto', 'Extra'],
-  'Migaku': ['Word', 'Sentence', 'Translation', 'Definitions', 'Image', 'Sentence Audio', 'Word Audio'],
+  'Basic': ['Front', 'Back'],
 };
 
 function detectSource(fieldName: string): FieldSource {
@@ -56,12 +56,54 @@ const SOURCE_OPTIONS: FieldSource[] = ['selection','cue','dictionary','translate
 type ConnectionState = 'idle' | 'connecting' | 'connected' | 'error';
 
 export function CardsTab({ mapping, setMapping, mockData }: CardsTabProps) {
-  const [conn, setConn] = useState<ConnectionState>('connected');
+  const [conn, setConn] = useState<ConnectionState>('idle');
   const [previewSide, setPreviewSide] = useState<'front' | 'back'>('front');
   const [editingField, setEditingField] = useState<string | null>(null);
   const [setupOpen, setSetupOpen] = useState(false);
+  const [decks, setDecks] = useState<string[]>([]);
+  const [models, setModels] = useState<string[]>([]);
+  const [fieldsByModel, setFieldsByModel] = useState<Record<string, string[]>>({});
 
-  const ankiFields = useMemo(() => MOCK_NOTE_TYPES[mapping.modelName] ?? [], [mapping.modelName]);
+  const ankiFields = useMemo(
+    () => fieldsByModel[mapping.modelName] ?? FALLBACK_FIELDS[mapping.modelName] ?? [],
+    [fieldsByModel, mapping.modelName],
+  );
+
+  async function refreshAnki() {
+    setConn('connecting');
+    try {
+      const ping = (await sendMessage('ANKI_PING', { url: mapping.ankiUrl }, 'background')) as AnkiPingResponse;
+      if (!ping?.ok) {
+        setConn('error');
+        setDecks([]);
+        setModels([]);
+        return;
+      }
+      const lists = (await sendMessage('ANKI_DECKS', { url: mapping.ankiUrl }, 'background')) as AnkiListsResponse;
+      setDecks(lists.decks ?? []);
+      setModels(lists.models ?? []);
+      if (lists.models?.length) {
+        await Promise.all(
+          lists.models.map(async (m) => {
+            const res = (await sendMessage(
+              'ANKI_FIELDS',
+              { url: mapping.ankiUrl, modelName: m },
+              'background',
+            )) as AnkiFieldsResponse;
+            setFieldsByModel((prev) => ({ ...prev, [m]: res.fields ?? [] }));
+          }),
+        );
+      }
+      setConn('connected');
+    } catch {
+      setConn('error');
+    }
+  }
+
+  useEffect(() => {
+    void refreshAnki();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (conn !== 'connected' || ankiFields.length === 0) return;
@@ -77,8 +119,7 @@ export function CardsTab({ mapping, setMapping, mockData }: CardsTabProps) {
   }, [mapping.modelName, conn]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleConnect = () => {
-    setConn('connecting');
-    setTimeout(() => setConn('connected'), 600);
+    void refreshAnki();
   };
 
   const setSource = (field: string, src: FieldSource) => {
@@ -141,7 +182,7 @@ export function CardsTab({ mapping, setMapping, mockData }: CardsTabProps) {
               className="sl-select"
             >
               {conn === 'connected'
-                ? MOCK_DECKS.map(d => <option key={d}>{d}</option>)
+                ? (decks.length ? decks : FALLBACK_DECKS).map(d => <option key={d}>{d}</option>)
                 : <option>Sin conexión</option>}
             </select>
           </Row>
@@ -154,7 +195,7 @@ export function CardsTab({ mapping, setMapping, mockData }: CardsTabProps) {
               className="sl-select"
             >
               {conn === 'connected'
-                ? Object.keys(MOCK_NOTE_TYPES).map(n => <option key={n}>{n}</option>)
+                ? (models.length ? models : FALLBACK_MODELS).map(n => <option key={n}>{n}</option>)
                 : <option>Sin conexión</option>}
             </select>
           </Row>
