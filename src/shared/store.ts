@@ -6,6 +6,9 @@ import type {
   Mode,
   CaptureSettings,
   CleanupSettings,
+  TranslateSettings,
+  AsrSettings,
+  OnboardingState,
 } from './types';
 
 export const DEFAULT_SUBTITLE_STYLES: SubtitleStyles = {
@@ -42,6 +45,26 @@ export const DEFAULT_CLEANUP: CleanupSettings = {
   hideShadows: true,
 };
 
+export const DEFAULT_TRANSLATE: TranslateSettings = {
+  provider: 'offline',
+  targetLanguage: 'es',
+  deeplToken: '',
+  googleToken: '',
+  libreTranslateUrl: 'https://libretranslate.com',
+  libreTranslateToken: '',
+  cacheTtlDays: 30,
+};
+
+export const DEFAULT_ASR: AsrSettings = {
+  enabled: false,
+  model: 'tiny',
+};
+
+export const DEFAULT_ONBOARDING: OnboardingState = {
+  completed: false,
+  completedAt: null,
+};
+
 export interface KivaraState {
   enabled: boolean;
   panelOpen: boolean;
@@ -52,6 +75,9 @@ export interface KivaraState {
   ankiMapping: AnkiMapping;
   capture: CaptureSettings;
   cleanup: CleanupSettings;
+  translate: TranslateSettings;
+  asr: AsrSettings;
+  onboarding: OnboardingState;
   audioCaptureActive: boolean;
 
   setEnabled: (v: boolean) => void;
@@ -63,6 +89,9 @@ export interface KivaraState {
   setAnkiMapping: (m: AnkiMapping | ((prev: AnkiMapping) => AnkiMapping)) => void;
   setCapture: (c: CaptureSettings | ((prev: CaptureSettings) => CaptureSettings)) => void;
   setCleanup: (c: CleanupSettings | ((prev: CleanupSettings) => CleanupSettings)) => void;
+  setTranslate: (t: TranslateSettings | ((prev: TranslateSettings) => TranslateSettings)) => void;
+  setAsr: (a: AsrSettings | ((prev: AsrSettings) => AsrSettings)) => void;
+  setOnboarding: (o: OnboardingState | ((prev: OnboardingState) => OnboardingState)) => void;
   setAudioCaptureActive: (v: boolean) => void;
   resetSubtitleStyles: () => void;
 }
@@ -136,6 +165,9 @@ export const useKivaraStore = create<KivaraState>()(
       ankiMapping: DEFAULT_ANKI_MAPPING,
       capture: DEFAULT_CAPTURE,
       cleanup: DEFAULT_CLEANUP,
+      translate: DEFAULT_TRANSLATE,
+      asr: DEFAULT_ASR,
+      onboarding: DEFAULT_ONBOARDING,
       audioCaptureActive: false,
 
       setEnabled: (v) => set({ enabled: v }),
@@ -159,6 +191,18 @@ export const useKivaraStore = create<KivaraState>()(
         set((state) => ({
           cleanup: typeof c === 'function' ? c(state.cleanup) : c,
         })),
+      setTranslate: (t) =>
+        set((state) => ({
+          translate: typeof t === 'function' ? t(state.translate) : t,
+        })),
+      setAsr: (a) =>
+        set((state) => ({
+          asr: typeof a === 'function' ? a(state.asr) : a,
+        })),
+      setOnboarding: (o) =>
+        set((state) => ({
+          onboarding: typeof o === 'function' ? o(state.onboarding) : o,
+        })),
       setAudioCaptureActive: (v) => set({ audioCaptureActive: v }),
       resetSubtitleStyles: () => set({ subtitleStyles: DEFAULT_SUBTITLE_STYLES }),
     }),
@@ -175,6 +219,9 @@ export const useKivaraStore = create<KivaraState>()(
         ankiMapping: state.ankiMapping,
         capture: state.capture,
         cleanup: state.cleanup,
+        translate: state.translate,
+        asr: state.asr,
+        onboarding: state.onboarding,
       }),
     },
   ),

@@ -64,9 +64,27 @@ export function Popup() {
   }
 
   async function toggleAudioCapture() {
-    setAudioCaptureActive(!audioCaptureActive);
-    // Phase 2: send START/STOP_AUDIO_CAPTURE to background which will set up
-    // the offscreen document via chrome.offscreen.createDocument.
+    const next = !audioCaptureActive;
+    setAudioCaptureActive(next);
+    try {
+      if (next) {
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        const result = (await sendMessage(
+          'START_AUDIO_CAPTURE',
+          { tabId: tab?.id },
+          'background',
+        )) as { ok: boolean; error?: string };
+        if (!result.ok) {
+          setAudioCaptureActive(false);
+          setPing((p) => ({ ...p, error: result.error || 'No se pudo iniciar la captura.' }));
+        }
+      } else {
+        await sendMessage('STOP_AUDIO_CAPTURE', {}, 'background');
+      }
+    } catch (err) {
+      setAudioCaptureActive(false);
+      console.warn('[Kivara Lingo] toggleAudioCapture failed', err);
+    }
   }
 
   function openOptions() {
@@ -97,7 +115,7 @@ export function Popup() {
             <KivaraLingoLogo size={28} />
             <div>
               <div className="text-sm font-bold leading-none">Kivara Lingo</div>
-              <div className="text-[10px] text-zinc-500 leading-none mt-0.5">v0.1 — Fase 1</div>
+              <div className="text-[10px] text-zinc-500 leading-none mt-0.5">v0.2 — Fase 2</div>
             </div>
           </div>
           <button
@@ -159,13 +177,13 @@ export function Popup() {
                 ? 'bg-rose-500/15 text-rose-700 dark:text-rose-300 hover:bg-rose-500/25'
                 : 'bg-zinc-100 dark:bg-zinc-900 hover:bg-zinc-200 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300'
             }`}
-            title="Phase 1.5: requiere gesto del usuario y chrome.tabCapture"
+            title="Captura el audio de la pestaña para anexar a las tarjetas Anki"
           >
             <span className="flex items-center gap-2">
               {audioCaptureActive ? <MicIcon size={14} /> : <MicOffIcon size={14} />}
               {audioCaptureActive ? 'Captura de audio activa' : 'Activar captura de audio'}
             </span>
-            <span className="text-[9px] text-zinc-500">Phase 1.5</span>
+            <span className="text-[9px] text-zinc-500">tabCapture</span>
           </button>
 
           <button

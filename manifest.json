@@ -1,18 +1,35 @@
 {
   "manifest_version": 3,
   "name": "Kivara Lingo",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Learn languages while watching your favorite shows.",
   "permissions": [
     "storage",
     "activeTab",
     "scripting",
     "tabCapture",
-    "offscreen"
+    "offscreen",
+    "alarms",
+    "tts"
   ],
   "host_permissions": [
     "http://127.0.0.1:8765/*",
-    "*://*.youtube.com/*"
+    "*://*.youtube.com/*",
+    "*://*.netflix.com/*",
+    "*://*.nflxvideo.net/*",
+    "*://*.disneyplus.com/*",
+    "*://*.disney-plus.net/*",
+    "*://*.bamgrid.com/*",
+    "*://*.hbomax.com/*",
+    "*://*.max.com/*",
+    "*://*.primevideo.com/*",
+    "*://*.media-amazon.com/*",
+    "*://*.cloudfront.net/*",
+    "https://api.deepl.com/*",
+    "https://api-free.deepl.com/*",
+    "https://translation.googleapis.com/*",
+    "https://libretranslate.com/*",
+    "https://*.libretranslate.com/*"
   ],
   "background": {
     "service_worker": "src/background/service-worker.ts",
@@ -21,20 +38,41 @@
   "content_scripts": [
     {
       "matches": [
-        "*://*.youtube.com/*"
+        "*://*.youtube.com/*",
+        "*://*.netflix.com/*",
+        "*://*.disneyplus.com/*",
+        "*://*.hbomax.com/*",
+        "*://*.max.com/*",
+        "*://*.primevideo.com/*"
       ],
       "js": [
         "src/content/index.tsx"
       ],
       "all_frames": false,
       "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "*://*.netflix.com/*",
+        "*://*.disneyplus.com/*",
+        "*://*.hbomax.com/*",
+        "*://*.max.com/*",
+        "*://*.primevideo.com/*"
+      ],
+      "js": [
+        "src/content/platform-adapters/main-world-interceptor.ts"
+      ],
+      "world": "MAIN",
+      "run_at": "document_start",
+      "all_frames": false
     }
   ],
   "web_accessible_resources": [
     {
       "resources": [
         "src/assets/dictionaries/*",
-        "src/offscreen/*"
+        "src/offscreen/*",
+        "src/onboarding/*"
       ],
       "matches": ["<all_urls>"]
     }

@@ -18,10 +18,32 @@ let lastVideoElement: HTMLVideoElement | null = null;
 let lastVideoContainer: HTMLElement | null = null;
 
 function findVideoContainer(): { video: HTMLVideoElement | null; container: HTMLElement | null } {
-  if (window.location.hostname.includes('youtube.com')) {
-    const player = document.querySelector<HTMLElement>('.html5-video-player');
-    if (player) return { video: player.querySelector<HTMLVideoElement>('video'), container: player };
+  const host = window.location.hostname;
+
+  // Per-platform anchor preferences. Falls back to the video's parent element
+  // for unknown layouts.
+  const platformSelectors: Array<{ test: RegExp; selectors: string[] }> = [
+    { test: /youtube\.com$/, selectors: ['.html5-video-player'] },
+    { test: /netflix\.com$/, selectors: ['.watch-video', '.watch-video--player-view'] },
+    { test: /disneyplus\.com$/, selectors: ['.btm-media-player', '.btm-media-overlays'] },
+    { test: /(hbomax|max)\.com$/, selectors: ['#root', '[data-testid="player-container"]'] },
+    {
+      test: /primevideo\.com$/,
+      selectors: ['.webPlayerSDKContainer', '.atvwebplayersdk-player-container'],
+    },
+  ];
+
+  for (const { test, selectors } of platformSelectors) {
+    if (!test.test(host)) continue;
+    for (const selector of selectors) {
+      const el = document.querySelector<HTMLElement>(selector);
+      if (el) {
+        const video = el.querySelector<HTMLVideoElement>('video');
+        if (video) return { video, container: el };
+      }
+    }
   }
+
   const video = document.querySelector<HTMLVideoElement>('video');
   return {
     video,

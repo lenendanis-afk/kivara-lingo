@@ -8,6 +8,8 @@ import type {
 } from '../shared/types';
 import { ankiConnect, dataUrlToBase64, type AnkiMedia } from './anki-connect';
 import { translateToken } from './translate';
+import { extractAudioClip, getAudioCaptureStatus } from './audio-capture-manager';
+import { getDB, type PendingNoteRow } from '../shared/db';
 
 interface ResolveContext {
   request: CreateCardRequest;
@@ -19,14 +21,22 @@ interface ResolveContext {
 }
 
 function safeFilename(base: string, ext: string): string {
-  const slug = base
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9]+/g, '_')
-    .replace(/^_+|_+$/g, '')
-    .slice(0, 40) || 'kivara';
+  const slug =
+    base
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '')
+      .slice(0, 40) || 'kivara';
   return `kivara_${slug}_${Date.now()}.${ext}`;
+}
+
+function extForMime(mime: string): string {
+  if (/mp3|mpeg/.test(mime)) return 'mp3';
+  if (/ogg/.test(mime)) return 'ogg';
+  if (/mp4|m4a|aac/.test(mime)) return 'm4a';
+  return 'webm';
 }
 
 function resolveField(field: string, source: FieldSource, ctx: ResolveContext): string {
@@ -44,17 +54,42 @@ function resolveField(field: string, source: FieldSource, ctx: ResolveContext): 
       return ctx.bilingual || ctx.translation;
     }
     case 'tts':
-      // Phase 2: dictionary or 3rd-party TTS. Empty for now.
-      return '';
     case 'manual':
     case 'frame':
     case 'tabCapture':
       // Media fields — the value is appended by AnkiConnect via `picture`/`audio` arrays.
-      // Returning an empty string here ensures the field exists but does not duplicate data.
       return '';
     default:
       return '';
   }
+}
+
+async function resolveAudio(
+  request: CreateCardRequest,
+): Promise<{ dataUrl: string; mime: string } | null> {
+  // Prefer the explicit audio attached by the caller (e.g. content script
+  // already extracted via VAD).
+  if (request.audio) {
+    const mime = /data:([^;]+)/.exec(request.audio)?.[1] ?? 'audio/webm';
+    return { dataUrl: request.audio, mime };
+  }
+
+  // Otherwise, ask the offscreen recorder for a slice covering the cue range.
+  const status = getAudioCaptureStatus();
+  if (!status.active) return null;
+  if (request.cueStart == null || request.cueEnd == null) return null;
+
+  // The cue times in the request are video-time (ms). The offscreen recorder
+  // stores wall-clock timestamps. We translate by treating "now" as the
+  // current cue end + post-roll: the user just hit save while the cue was
+  // visible, so the rolling buffer covers it.
+  const now = Date.now();
+  const duration = Math.max(500, request.cueEnd - request.cueStart);
+  const start = now - duration - 300; // pre-roll
+  const end = now + 200; // small slack so the chunk that contains the last spoken bit is included
+  const clip = await extractAudioClip(start, end);
+  if (!clip.ok || !clip.dataUrl) return null;
+  return { dataUrl: clip.dataUrl, mime: clip.mimeType || 'audio/webm' };
 }
 
 export async function createCardFromRequest(
@@ -62,7 +97,6 @@ export async function createCardFromRequest(
   mapping: AnkiMapping,
 ): Promise<CreateCardResponse> {
   const warnings: string[] = [];
-
   const dictionaryHit = await translateToken(request.token, request.language ?? 'en');
   const ctx: ResolveContext = {
     request,
@@ -86,9 +120,8 @@ export async function createCardFromRequest(
     }
   }
 
+  // Frame
   const pictures: AnkiMedia[] = [];
-  const audios: AnkiMedia[] = [];
-
   if (request.frame) {
     const frameField = fieldMapping.find(([, s]) => s === 'frame')?.[0];
     if (frameField) {
@@ -103,18 +136,30 @@ export async function createCardFromRequest(
     }
   }
 
-  if (request.audio) {
-    const audioField = fieldMapping.find(([, s]) => s === 'tabCapture' || s === 'tts')?.[0];
-    if (audioField) {
-      const ext = request.audio.includes('audio/mp3') ? 'mp3' : 'webm';
-      const filename = safeFilename(request.token, ext);
+  // Audio — either supplied by content or pulled from the offscreen rolling buffer.
+  const audios: AnkiMedia[] = [];
+  const audioField = fieldMapping.find(([, s]) => s === 'tabCapture' || s === 'tts')?.[0];
+  if (audioField) {
+    const resolved = await resolveAudio(request);
+    if (resolved) {
+      const filename = safeFilename(request.token, extForMime(resolved.mime));
       try {
-        await ankiConnect.storeMediaFile(filename, dataUrlToBase64(request.audio), mapping.ankiUrl);
-        audios.push({ filename, data: dataUrlToBase64(request.audio), fields: [audioField] });
+        await ankiConnect.storeMediaFile(
+          filename,
+          dataUrlToBase64(resolved.dataUrl),
+          mapping.ankiUrl,
+        );
+        audios.push({
+          filename,
+          data: dataUrlToBase64(resolved.dataUrl),
+          fields: [audioField],
+        });
       } catch (err) {
         const reason = err instanceof Error ? err.message : 'audio';
         warnings.push(`No se pudo guardar el audio: ${reason}`);
       }
+    } else if (getAudioCaptureStatus().active === false) {
+      warnings.push('La captura de audio no está activa — no se adjuntó audio.');
     }
   }
 
@@ -131,9 +176,73 @@ export async function createCardFromRequest(
       },
       mapping.ankiUrl,
     );
+    // Record success in dedup ledger.
+    try {
+      await getDB().saved_notes.put({
+        token: request.token,
+        language: request.language ?? 'en',
+        sentence: request.sentence,
+        ankiNoteId: noteId,
+        createdAt: Date.now(),
+      });
+    } catch {
+      // best-effort — ignore IndexedDB errors
+    }
     return { ok: true, noteId, warnings };
   } catch (err) {
     const message = err instanceof Error ? err.message : 'addNote failed';
+    // Queue for retry by the alarm.
+    try {
+      await getDB().pending_notes.add({
+        request,
+        retries: 0,
+        lastError: message,
+        createdAt: Date.now(),
+        nextAttemptAt: Date.now() + 60_000,
+      });
+    } catch {
+      // ignore
+    }
     return { ok: false, error: message, warnings };
   }
+}
+
+/** Drain the pending queue. Called by `chrome.alarms`. */
+export async function retryPendingNotes(mapping: AnkiMapping): Promise<{ retried: number; succeeded: number }> {
+  const db = getDB();
+  const now = Date.now();
+  let retried = 0;
+  let succeeded = 0;
+  let rows: PendingNoteRow[] = [];
+  try {
+    rows = await db.pending_notes.where('nextAttemptAt').belowOrEqual(now).toArray();
+  } catch {
+    return { retried: 0, succeeded: 0 };
+  }
+  for (const row of rows) {
+    if (!row.id) continue;
+    retried += 1;
+    const result = await createCardFromRequest(row.request, mapping);
+    if (result.ok) {
+      try {
+        await db.pending_notes.delete(row.id);
+        succeeded += 1;
+      } catch {
+        // ignore
+      }
+    } else {
+      const nextRetries = row.retries + 1;
+      const backoffMs = Math.min(60_000 * 30, 60_000 * Math.pow(2, nextRetries));
+      try {
+        await db.pending_notes.update(row.id, {
+          retries: nextRetries,
+          lastError: result.error ?? 'unknown',
+          nextAttemptAt: Date.now() + backoffMs,
+        });
+      } catch {
+        // ignore
+      }
+    }
+  }
+  return { retried, succeeded };
 }

@@ -1,12 +1,16 @@
 import React, { useState } from 'react';
 import {
   Keyboard, EyeOff, ChevronDown, Mic, Image as ImageIcon, Wand2,
-  SlidersHorizontal, BookOpen,
+  SlidersHorizontal, BookOpen, Languages, Volume2,
 } from 'lucide-react';
 import { useKivaraStore } from '../../../shared/store';
+import type { TranslateProvider } from '../../../shared/types';
 
 export function SettingsTab() {
-  const { capture, setCapture, cleanup, setCleanup, mode, setMode } = useKivaraStore();
+  const {
+    capture, setCapture, cleanup, setCleanup, mode, setMode,
+    translate, setTranslate, asr, setAsr,
+  } = useKivaraStore();
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   const autoMode = capture.autoMode;
@@ -97,6 +101,105 @@ export function SettingsTab() {
           </Row>
           <p className="text-[10px] text-zinc-500 dark:text-zinc-500 leading-snug -mt-0.5">
             En lectura ocultamos los popovers; sigues viendo los subtítulos estilizados.
+          </p>
+        </Section>
+
+        {/* Traducción */}
+        <Section
+          icon={<Languages size={10} />}
+          title="Traducción"
+          headerRight={
+            <span className="text-[10px] font-medium text-zinc-500 dark:text-zinc-500 normal-case tracking-normal">
+              {translate.provider}
+            </span>
+          }
+        >
+          <Row label="Proveedor">
+            <select
+              value={translate.provider}
+              onChange={(e) =>
+                setTranslate({ ...translate, provider: e.target.value as TranslateProvider })
+              }
+              className="sl-select w-full text-[11px] px-2 py-1 rounded border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-200"
+            >
+              <option value="offline">Offline (diccionario local)</option>
+              <option value="deepl">DeepL</option>
+              <option value="google">Google Cloud Translate</option>
+              <option value="libretranslate">LibreTranslate</option>
+            </select>
+          </Row>
+          <Row label="Idioma destino">
+            <input
+              type="text"
+              value={translate.targetLanguage}
+              onChange={(e) => setTranslate({ ...translate, targetLanguage: e.target.value.trim() || 'es' })}
+              placeholder="es"
+              className="sl-input w-full text-[11px] px-2 py-1 rounded border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-200"
+            />
+          </Row>
+          {translate.provider === 'deepl' && (
+            <Row label="DeepL API token">
+              <input
+                type="password"
+                value={translate.deeplToken}
+                onChange={(e) => setTranslate({ ...translate, deeplToken: e.target.value })}
+                placeholder="xxxxxxxx:fx para Free, sin :fx para Pro"
+                className="sl-input w-full text-[11px] px-2 py-1 rounded border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-200"
+              />
+            </Row>
+          )}
+          {translate.provider === 'google' && (
+            <Row label="Google Cloud API key">
+              <input
+                type="password"
+                value={translate.googleToken}
+                onChange={(e) => setTranslate({ ...translate, googleToken: e.target.value })}
+                placeholder="AIza..."
+                className="sl-input w-full text-[11px] px-2 py-1 rounded border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-200"
+              />
+            </Row>
+          )}
+          {translate.provider === 'libretranslate' && (
+            <>
+              <Row label="LibreTranslate URL">
+                <input
+                  type="text"
+                  value={translate.libreTranslateUrl}
+                  onChange={(e) => setTranslate({ ...translate, libreTranslateUrl: e.target.value })}
+                  placeholder="https://libretranslate.com"
+                  className="sl-input w-full text-[11px] px-2 py-1 rounded border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-200"
+                />
+              </Row>
+              <Row label="API key (opcional)">
+                <input
+                  type="password"
+                  value={translate.libreTranslateToken}
+                  onChange={(e) => setTranslate({ ...translate, libreTranslateToken: e.target.value })}
+                  placeholder="déjalo vacío para instancias públicas"
+                  className="sl-input w-full text-[11px] px-2 py-1 rounded border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-200"
+                />
+              </Row>
+            </>
+          )}
+          <Row label="Caché (días)" value={`${translate.cacheTtlDays}d`}>
+            <input
+              type="range" min={1} max={90} step={1} value={translate.cacheTtlDays}
+              onChange={(e) => setTranslate({ ...translate, cacheTtlDays: Number(e.target.value) })}
+              className="sl-range w-full"
+            />
+          </Row>
+          <p className="text-[10px] text-zinc-500 dark:text-zinc-500 leading-snug -mt-0.5">
+            El diccionario offline siempre se consulta primero. Los proveedores externos solo se usan si la palabra no aparece allí, y las respuestas se cachean en IndexedDB.
+          </p>
+        </Section>
+
+        {/* ASR */}
+        <Section icon={<Volume2 size={10} />} title="Transcripción on-device">
+          <Row label="Habilitar ASR (Whisper)">
+            <Toggle on={asr.enabled} onChange={(v) => setAsr({ ...asr, enabled: v })} />
+          </Row>
+          <p className="text-[10px] text-zinc-500 dark:text-zinc-500 leading-snug -mt-0.5">
+            Cuando una plataforma no expone subtítulos (ej. video sin captions), se ejecuta Whisper localmente en wasm. El modelo se descarga la primera vez (~75 MB) y queda cacheado. La integración completa llega en la Fase 3.
           </p>
         </Section>
 

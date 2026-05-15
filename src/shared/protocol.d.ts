@@ -6,6 +6,12 @@ import type {
   AnkiPingResponse,
   AnkiListsResponse,
   AnkiFieldsResponse,
+  AudioClipResponse,
+  AudioCaptureStatus,
+  TranslateRequest,
+  TranslateResponse,
+  TtsSpeakRequest,
+  TtsResponse,
 } from './types';
 
 declare module 'webext-bridge' {
@@ -15,7 +21,12 @@ declare module 'webext-bridge' {
     ANKI_DECKS: ProtocolWithReturn<{ url?: string }, AnkiListsResponse>;
     ANKI_MODELS: ProtocolWithReturn<{ url?: string }, AnkiListsResponse>;
     ANKI_FIELDS: ProtocolWithReturn<{ url?: string; modelName: string }, AnkiFieldsResponse>;
-    START_AUDIO_CAPTURE: ProtocolWithReturn<{ tabId?: number }, { ok: boolean }>;
+    ANKI_CREATE_DECK: ProtocolWithReturn<{ url?: string; deckName: string }, { ok: boolean; error?: string }>;
+    START_AUDIO_CAPTURE: ProtocolWithReturn<{ tabId?: number }, { ok: boolean; error?: string }>;
     STOP_AUDIO_CAPTURE: ProtocolWithReturn<Record<string, never>, { ok: boolean }>;
+    AUDIO_CAPTURE_STATUS: ProtocolWithReturn<Record<string, never>, AudioCaptureStatus>;
+    EXTRACT_AUDIO_CLIP: ProtocolWithReturn<{ startMs: number; endMs: number }, AudioClipResponse>;
+    TRANSLATE: ProtocolWithReturn<TranslateRequest, TranslateResponse>;
+    TTS_SPEAK: ProtocolWithReturn<TtsSpeakRequest, TtsResponse>;
   }
 }
