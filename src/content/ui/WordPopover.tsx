@@ -49,7 +49,7 @@ export function WordPopover({
     <div
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
-      className="absolute left-1/2 -translate-x-1/2 bottom-full mb-3 w-72 z-30 animate-in fade-in zoom-in-95 slide-in-from-bottom-1 duration-150"
+      className="absolute left-1/2 -translate-x-1/2 bottom-full mb-3 z-30"
       style={{
         pointerEvents: 'auto',
         textShadow: 'none',
@@ -57,10 +57,26 @@ export function WordPopover({
         fontWeight: 400,
         letterSpacing: 'normal',
         lineHeight: 1.4,
-        color: '#fff',
+        color: '#ffffff',
+        fontFamily:
+          '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
+        textAlign: 'left',
+        width: '280px',
+        maxWidth: 'min(320px, calc(100vw - 32px))',
+        zIndex: 2147483646,
       }}
     >
-      <div className="bg-zinc-900/95 backdrop-blur-xl border border-zinc-700/60 rounded-xl shadow-2xl overflow-hidden text-left">
+      <div
+        className="rounded-xl overflow-hidden text-left border"
+        style={{
+          backgroundColor: 'rgba(24, 24, 27, 0.97)',
+          borderColor: 'rgba(82, 82, 91, 0.6)',
+          backdropFilter: 'blur(12px)',
+          WebkitBackdropFilter: 'blur(12px)',
+          boxShadow:
+            '0 20px 25px -5px rgba(0, 0, 0, 0.6), 0 10px 10px -5px rgba(0, 0, 0, 0.3)',
+        }}
+      >
 
         <div className="flex items-start justify-between gap-3 px-3 pt-2.5 pb-2 border-b border-zinc-800/60">
           <div className="flex items-center gap-2 min-w-0">

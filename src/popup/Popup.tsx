@@ -55,7 +55,7 @@ export function Popup() {
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       if (tab?.id) {
-        await chrome.tabs.sendMessage(tab.id, { type: 'TOGGLE_PANEL' });
+        await chrome.tabs.sendMessage(tab.id, { type: 'OPEN_PANEL' });
       }
     } catch {
       // ignore — no content script on tab

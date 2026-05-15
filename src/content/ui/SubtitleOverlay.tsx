@@ -11,6 +11,7 @@ export interface SubtitleOverlayProps {
   mode: Mode;
   saveRequestKey?: number | null;
   onSaveCard: (token: string | undefined, sentence: string) => void;
+  onTokenHoverChange?: (hovered: boolean) => void;
 }
 
 /**
@@ -24,6 +25,7 @@ export function SubtitleOverlay({
   mode,
   saveRequestKey,
   onSaveCard,
+  onTokenHoverChange,
 }: SubtitleOverlayProps) {
   const [isHovered, setIsHovered] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -40,6 +42,11 @@ export function SubtitleOverlay({
   useEffect(() => {
     hoveredKeyRef.current = hoveredKey;
   }, [hoveredKey]);
+
+  // Notify parent (App) so it can pause/resume the underlying <video>.
+  useEffect(() => {
+    onTokenHoverChange?.(hoveredKey !== null);
+  }, [hoveredKey, onTokenHoverChange]);
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => {

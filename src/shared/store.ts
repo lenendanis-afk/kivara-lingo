@@ -122,6 +122,8 @@ function makeChromeStorage(area: 'sync' | 'local' = 'sync'): StateStorage {
   };
 }
 
+const STORE_KEY = 'kivara-lingo-state';
+
 export const useKivaraStore = create<KivaraState>()(
   persist(
     (set) => ({
@@ -161,7 +163,7 @@ export const useKivaraStore = create<KivaraState>()(
       resetSubtitleStyles: () => set({ subtitleStyles: DEFAULT_SUBTITLE_STYLES }),
     }),
     {
-      name: 'kivara-lingo-state',
+      name: STORE_KEY,
       storage: createJSONStorage(() => makeChromeStorage('sync')),
       partialize: (state) => ({
         enabled: state.enabled,
@@ -177,3 +179,18 @@ export const useKivaraStore = create<KivaraState>()(
     },
   ),
 );
+
+// Cross-context state sync: when another extension context (popup / options /
+// background) writes to chrome.storage.sync, rehydrate this store so the
+// content script picks up the change without a full reload.
+try {
+  if (typeof chrome !== 'undefined' && chrome.storage?.onChanged) {
+    chrome.storage.onChanged.addListener((changes, area) => {
+      if (area === 'sync' && Object.prototype.hasOwnProperty.call(changes, STORE_KEY)) {
+        void useKivaraStore.persist.rehydrate();
+      }
+    });
+  }
+} catch {
+  // ignore — chrome.storage may not be available in test environments
+}
