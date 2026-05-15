@@ -72,11 +72,15 @@
     "@crxjs/vite-plugin": "^2.0.0-beta.33",
     "@tailwindcss/vite": "4.1.12",
     "@types/chrome": "^0.1.42",
+    "@types/node": "^25.8.0",
+    "@types/react": "^18",
+    "@types/react-dom": "^18",
     "@types/webextension-polyfill": "^0.12.5",
     "@vitejs/plugin-react": "4.7.0",
     "file-url": "^4.0.0",
     "jsdom": "^29.1.1",
     "tailwindcss": "4.1.12",
+    "typescript": "^5.6.3",
     "vite": "6.3.5"
   },
   "peerDependencies": {
@@ -93,7 +97,9 @@
   },
   "pnpm": {
     "overrides": {
-      "vite": "6.3.5"
+      "vite": "6.3.5",
+      "@types/react": "18.3.28",
+      "@types/react-dom": "18.3.7"
     }
   }
 }

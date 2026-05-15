@@ -1,0 +1,204 @@
+{
+  "these days": {
+    "token": "these days",
+    "type": "phrase",
+    "phonetic": "/ðiːz deɪz/",
+    "translation": "estos días, en la actualidad",
+    "bilingual": "(adv.) en la actualidad, hoy en día",
+    "monolingual": "In the present period of time."
+  },
+  "kick the bucket": {
+    "token": "kick the bucket",
+    "type": "phrase",
+    "phonetic": "/kɪk ðə ˈbʌkɪt/",
+    "translation": "estirar la pata, morir",
+    "bilingual": "(idiom) morir, fallecer (informal)",
+    "monolingual": "An informal idiom meaning to die."
+  },
+  "by the way": {
+    "token": "by the way",
+    "type": "phrase",
+    "phonetic": "/baɪ ðə weɪ/",
+    "translation": "por cierto, a propósito",
+    "bilingual": "(adv.) por cierto, a propósito",
+    "monolingual": "Used to introduce a remark that is not directly relevant."
+  },
+  "as well": {
+    "token": "as well",
+    "type": "phrase",
+    "phonetic": "/æz wɛl/",
+    "translation": "también",
+    "bilingual": "(adv.) también, además",
+    "monolingual": "In addition; too."
+  },
+  "of course": {
+    "token": "of course",
+    "type": "phrase",
+    "phonetic": "/əv kɔːs/",
+    "translation": "por supuesto, claro",
+    "bilingual": "(adv.) por supuesto, naturalmente",
+    "monolingual": "Used to give permission or to say yes emphatically."
+  },
+  "these": {
+    "token": "these",
+    "type": "word",
+    "level": "A1",
+    "phonetic": "/ðiːz/",
+    "translation": "estos, estas",
+    "bilingual": "(det. pl.) estos / estas",
+    "monolingual": "Plural of \"this\"; referring to nearby items."
+  },
+  "days": {
+    "token": "days",
+    "type": "word",
+    "level": "A1",
+    "phonetic": "/deɪz/",
+    "translation": "días",
+    "bilingual": "(sust. pl.) días, jornadas",
+    "monolingual": "Plural of \"day\"; periods of 24 hours."
+  },
+  "doesn't": {
+    "token": "doesn't",
+    "type": "word",
+    "level": "A1",
+    "phonetic": "/ˈdʌzənt/",
+    "translation": "no (3ª pers.)",
+    "bilingual": "(aux. neg.) does + not",
+    "monolingual": "Negative form of \"does\"."
+  },
+  "travel": {
+    "token": "travel",
+    "type": "word",
+    "level": "A2",
+    "phonetic": "/ˈtrævəl/",
+    "translation": "viajar",
+    "bilingual": "(verbo) viajar, desplazarse",
+    "monolingual": "To go from one place to another."
+  },
+  "much": {
+    "token": "much",
+    "type": "word",
+    "level": "A1",
+    "phonetic": "/mʌtʃ/",
+    "translation": "mucho",
+    "bilingual": "(adv.) en gran cantidad",
+    "monolingual": "A large amount or to a great degree."
+  },
+  "hello": {
+    "token": "hello",
+    "type": "word",
+    "level": "A1",
+    "phonetic": "/həˈloʊ/",
+    "translation": "hola",
+    "bilingual": "(interj.) hola, saludo",
+    "monolingual": "Used as a greeting."
+  },
+  "world": {
+    "token": "world",
+    "type": "word",
+    "level": "A1",
+    "phonetic": "/wɜːld/",
+    "translation": "mundo",
+    "bilingual": "(sust.) mundo, tierra",
+    "monolingual": "The earth, together with all of its countries and peoples."
+  },
+  "today": {
+    "token": "today",
+    "type": "word",
+    "level": "A1",
+    "phonetic": "/təˈdeɪ/",
+    "translation": "hoy",
+    "bilingual": "(adv.) hoy, en el día de hoy",
+    "monolingual": "On or in the course of this present day."
+  },
+  "tomorrow": {
+    "token": "tomorrow",
+    "type": "word",
+    "level": "A1",
+    "phonetic": "/təˈmɒrəʊ/",
+    "translation": "mañana",
+    "bilingual": "(adv.) mañana, el día siguiente",
+    "monolingual": "On the day after today."
+  },
+  "yesterday": {
+    "token": "yesterday",
+    "type": "word",
+    "level": "A1",
+    "phonetic": "/ˈjɛstədeɪ/",
+    "translation": "ayer",
+    "bilingual": "(adv.) ayer, en el día anterior",
+    "monolingual": "On the day before today."
+  },
+  "house": {
+    "token": "house",
+    "type": "word",
+    "level": "A1",
+    "phonetic": "/haʊs/",
+    "translation": "casa",
+    "bilingual": "(sust.) casa, hogar",
+    "monolingual": "A building for human habitation."
+  },
+  "people": {
+    "token": "people",
+    "type": "word",
+    "level": "A1",
+    "phonetic": "/ˈpiːpəl/",
+    "translation": "gente, personas",
+    "bilingual": "(sust. pl.) gente, personas",
+    "monolingual": "Human beings considered collectively."
+  },
+  "time": {
+    "token": "time",
+    "type": "word",
+    "level": "A1",
+    "phonetic": "/taɪm/",
+    "translation": "tiempo",
+    "bilingual": "(sust.) tiempo, momento",
+    "monolingual": "The indefinite continued progress of existence and events."
+  },
+  "good": {
+    "token": "good",
+    "type": "word",
+    "level": "A1",
+    "phonetic": "/ɡʊd/",
+    "translation": "bueno",
+    "bilingual": "(adj.) bueno, agradable",
+    "monolingual": "To be desired or approved of."
+  },
+  "love": {
+    "token": "love",
+    "type": "word",
+    "level": "A2",
+    "phonetic": "/lʌv/",
+    "translation": "amor; amar",
+    "bilingual": "(sust./verbo) amor; amar",
+    "monolingual": "An intense feeling of deep affection."
+  },
+  "want": {
+    "token": "want",
+    "type": "word",
+    "level": "A1",
+    "phonetic": "/wɒnt/",
+    "translation": "querer, desear",
+    "bilingual": "(verbo) querer, desear",
+    "monolingual": "Have a desire to possess or do (something)."
+  },
+  "know": {
+    "token": "know",
+    "type": "word",
+    "level": "A1",
+    "phonetic": "/noʊ/",
+    "translation": "saber, conocer",
+    "bilingual": "(verbo) saber, conocer",
+    "monolingual": "Be aware of through observation, inquiry, or information."
+  },
+  "think": {
+    "token": "think",
+    "type": "word",
+    "level": "A1",
+    "phonetic": "/θɪŋk/",
+    "translation": "pensar, creer",
+    "bilingual": "(verbo) pensar, creer, opinar",
+    "monolingual": "Have a particular opinion, belief, or idea about someone or something."
+  }
+}

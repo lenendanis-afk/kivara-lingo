@@ -1,16 +1,30 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { Volume1, Copy, Check, Quote, AudioLines, Camera } from 'lucide-react';
-import { SubtitleStyles } from '../../app/types';
-import { tokenizeSentence, SEGMENT_REGISTRY } from '../utils/tokenizer';
+import type { SubtitleStyles, Mode } from '../../shared/types';
+import { tokenizeSentence } from '../nlp/tokenize';
+import { lookupDictionary } from '../nlp/dictionary';
 import { WordPopover } from './WordPopover';
 
-interface SubtitleOverlayProps {
+export interface SubtitleOverlayProps {
   subtitleStyles: SubtitleStyles;
-  cue: { text: string } | null;
-  onSaveCard: (token?: string, sentence?: string) => void;
+  cue: { id?: string; text: string; start?: number; end?: number; language?: string } | null;
+  mode: Mode;
+  saveRequestKey?: number | null;
+  onSaveCard: (token: string | undefined, sentence: string) => void;
 }
 
-export function SubtitleOverlay({ subtitleStyles, cue, onSaveCard }: SubtitleOverlayProps) {
+/**
+ * Renders the Kivara subtitle layer over a real platform video. The layer is
+ * positioned absolutely inside the platform's video container (passed via the
+ * Shadow DOM portal in App.tsx).
+ */
+export function SubtitleOverlay({
+  subtitleStyles,
+  cue,
+  mode,
+  saveRequestKey,
+  onSaveCard,
+}: SubtitleOverlayProps) {
   const [isHovered, setIsHovered] = useState(false);
   const [copied, setCopied] = useState(false);
   const [captureState, setCaptureState] = useState<'idle' | 'screenshot' | 'audio'>('idle');
@@ -18,19 +32,21 @@ export function SubtitleOverlay({ subtitleStyles, cue, onSaveCard }: SubtitleOve
   const [expandedMWEs, setExpandedMWEs] = useState<Set<string>>(new Set());
   const [altExpandedKey, setAltExpandedKey] = useState<string | null>(null);
   const [savedTokens, setSavedTokens] = useState<Set<string>>(new Set());
-  
-  const hoverTimeout = useRef<NodeJS.Timeout | null>(null);
-  const wordHoverTimeout = useRef<NodeJS.Timeout | null>(null);
+
+  const hoverTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const wordHoverTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hoveredKeyRef = useRef<string | null>(null);
-  
-  useEffect(() => { hoveredKeyRef.current = hoveredKey; }, [hoveredKey]);
+
+  useEffect(() => {
+    hoveredKeyRef.current = hoveredKey;
+  }, [hoveredKey]);
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
       if (e.key !== 'Alt') return;
       e.preventDefault();
       const hk = hoveredKeyRef.current;
-      if (hk && SEGMENT_REGISTRY[hk]?.type === 'phrase') setAltExpandedKey(hk);
+      if (hk && lookupDictionary(hk)?.type === 'phrase') setAltExpandedKey(hk);
     };
     const up = (e: KeyboardEvent) => {
       if (e.key !== 'Alt' && e.altKey) return;
@@ -38,8 +54,10 @@ export function SubtitleOverlay({ subtitleStyles, cue, onSaveCard }: SubtitleOve
       setAltExpandedKey(null);
     };
     const blur = () => setAltExpandedKey(null);
-    const visibility = () => { if (document.hidden) setAltExpandedKey(null); };
-    
+    const visibility = () => {
+      if (document.hidden) setAltExpandedKey(null);
+    };
+
     window.addEventListener('keydown', down);
     window.addEventListener('keyup', up);
     window.addEventListener('blur', blur);
@@ -52,19 +70,26 @@ export function SubtitleOverlay({ subtitleStyles, cue, onSaveCard }: SubtitleOve
     };
   }, []);
 
-  const effectiveExpanded = React.useMemo(() => {
+  const effectiveExpanded = useMemo(() => {
     if (!altExpandedKey) return expandedMWEs;
     const next = new Set(expandedMWEs);
     next.add(altExpandedKey);
     return next;
   }, [expandedMWEs, altExpandedKey]);
 
-  const targetSentence = cue?.text || "";
+  const targetSentence = cue?.text ?? '';
+  const cueLanguage = cue?.language ?? 'en';
 
-  const tokens = React.useMemo(
-    () => tokenizeSentence(targetSentence, effectiveExpanded),
-    [targetSentence, effectiveExpanded]
+  const tokens = useMemo(
+    () => tokenizeSentence(targetSentence, effectiveExpanded, cueLanguage),
+    [targetSentence, effectiveExpanded, cueLanguage],
   );
+
+  // Reset cue-scoped UI state whenever the cue changes.
+  useEffect(() => {
+    setHoveredKey(null);
+    setAltExpandedKey(null);
+  }, [cue?.id]);
 
   const handleTokenEnter = (key: string) => {
     if (wordHoverTimeout.current) clearTimeout(wordHoverTimeout.current);
@@ -74,12 +99,11 @@ export function SubtitleOverlay({ subtitleStyles, cue, onSaveCard }: SubtitleOve
     wordHoverTimeout.current = setTimeout(() => setHoveredKey(null), 180);
   };
 
-  if (!cue) return null; // Only render when there's an active cue
-
   const toggleExpandMWE = (key: string) => {
-    setExpandedMWEs(prev => {
+    setExpandedMWEs((prev) => {
       const next = new Set(prev);
-      if (next.has(key)) next.delete(key); else next.add(key);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
       return next;
     });
     setHoveredKey(null);
@@ -92,44 +116,39 @@ export function SubtitleOverlay({ subtitleStyles, cue, onSaveCard }: SubtitleOve
     return null;
   };
 
-  const handleSaveToken = (e: React.MouseEvent, token: string) => {
-    handleCreateCard(e, token);
-    setSavedTokens(prev => new Set(prev).add(token.toLowerCase()));
-  };
+  const handleSaveToken = useCallback(
+    (token: string) => {
+      setCaptureState('screenshot');
+      window.setTimeout(() => {
+        setCaptureState('audio');
+        window.setTimeout(() => setCaptureState('idle'), 900);
+      }, 220);
+      onSaveCard(token, targetSentence);
+      setSavedTokens((prev) => new Set(prev).add(token.toLowerCase()));
+    },
+    [onSaveCard, targetSentence],
+  );
+
+  // Respond to Ctrl+S / external save requests.
+  useEffect(() => {
+    if (saveRequestKey == null) return;
+    const key = hoveredKeyRef.current;
+    if (key) {
+      const dictionary = lookupDictionary(key, cueLanguage);
+      const tokenText = dictionary?.token ?? key;
+      handleSaveToken(tokenText);
+    } else if (targetSentence) {
+      handleSaveToken(targetSentence);
+    }
+  }, [saveRequestKey, cueLanguage, handleSaveToken, targetSentence]);
 
   const handleMouseEnter = () => {
     if (hoverTimeout.current) clearTimeout(hoverTimeout.current);
     setIsHovered(true);
   };
-
   const handleMouseLeave = () => {
-    hoverTimeout.current = setTimeout(() => {
-      setIsHovered(false);
-    }, 200);
+    hoverTimeout.current = setTimeout(() => setIsHovered(false), 200);
   };
-
-  const handleCreateCard = (e: React.MouseEvent, token?: string) => {
-    e.stopPropagation();
-    // Simulate capture sequence visually
-    setCaptureState('screenshot');
-    setTimeout(() => {
-      setCaptureState('audio');
-      setTimeout(() => {
-        setCaptureState('idle');
-        onSaveCard(token, targetSentence);
-      }, 1600);
-    }, 220);
-  };
-
-  const bgOpacity = (subtitleStyles.backgroundOpacity / 100);
-  const bgColor = subtitleStyles.backgroundColor;
-
-  const hexToRgb = (hex: string) => {
-    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-    return result ? `${parseInt(result[1], 16)}, ${parseInt(result[2], 16)}, ${parseInt(result[3], 16)}` : '0,0,0';
-  };
-
-  const backgroundColorWithOpacity = `rgba(${hexToRgb(bgColor)}, ${bgOpacity})`;
 
   const handleCopy = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -140,149 +159,201 @@ export function SubtitleOverlay({ subtitleStyles, cue, onSaveCard }: SubtitleOve
     setTimeout(() => setCopied(false), 2000);
   };
 
+  if (!cue || !targetSentence.trim()) return null;
+
+  const bgOpacity = subtitleStyles.backgroundOpacity / 100;
+  const bgColor = subtitleStyles.backgroundColor;
+
+  const hexToRgb = (hex: string) => {
+    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    return result
+      ? `${parseInt(result[1], 16)}, ${parseInt(result[2], 16)}, ${parseInt(result[3], 16)}`
+      : '0,0,0';
+  };
+  const backgroundColorWithOpacity = `rgba(${hexToRgb(bgColor)}, ${bgOpacity})`;
+
+  const verticalPercent =
+    subtitleStyles.verticalOffset ??
+    (subtitleStyles.position === 'top' ? 15 : subtitleStyles.position === 'middle' ? 50 : 85);
+
+  const isReading = mode === 'reading';
+
   return (
-    <div 
-      className="relative w-full h-full pb-24"
+    <div
+      className="absolute inset-x-0 z-10 flex flex-col items-center px-8 transition-all duration-200"
       style={{
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: subtitleStyles.position === 'bottom' ? 'flex-end' : subtitleStyles.position === 'top' ? 'flex-start' : 'center',
+        top: `${verticalPercent}%`,
+        transform: 'translateY(-50%)',
+        pointerEvents: 'none',
       }}
     >
-      <div 
-        className={`transition-all duration-300 pointer-events-auto select-text`}
-        style={{ 
-          marginBottom: subtitleStyles.position === 'bottom' ? `${subtitleStyles.marginBottom}px` : 0,
-          marginTop: subtitleStyles.position === 'top' ? `${subtitleStyles.marginTop}px` : 0,
-        }}
+      <div
+        className="relative flex flex-col items-center pointer-events-auto select-text"
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
       >
-        <div className="flex flex-col items-center gap-1.5 transition-all duration-200">
-          
-          {/* Action Toolbar on hover */}
-          <div className={`absolute -top-12 z-10 flex items-center gap-1 bg-zinc-900/95 backdrop-blur-sm border border-zinc-700/60 p-1 rounded-lg shadow-xl transition-all duration-300 transform ${isHovered ? 'scale-100 opacity-100 translate-y-0' : 'scale-95 opacity-0 translate-y-2 pointer-events-none'}`}>
+        <div className="absolute -top-14 w-full h-14 bg-transparent z-0" />
+
+        {!isReading && (
+          <div
+            className={`absolute -top-12 z-10 flex items-center gap-1 bg-zinc-900/95 backdrop-blur-sm border border-zinc-700/60 p-1 rounded-lg shadow-xl transition-all duration-300 transform ${
+              isHovered && hoveredKey === null ? 'translate-y-0 opacity-100' : 'translate-y-2 opacity-0 pointer-events-none'
+            }`}
+          >
             <span className="text-[9px] font-semibold uppercase tracking-wider text-zinc-500 px-2">Frase</span>
             <div className="w-px h-3.5 bg-zinc-700/80" />
-            <button className="p-1.5 text-zinc-300 hover:text-white hover:bg-zinc-700/50 rounded-md transition-colors" title="Reproducir audio de la frase">
+            <button
+              className="p-1.5 text-zinc-300 hover:text-white hover:bg-zinc-700/50 rounded-md transition-colors"
+              title="Reproducir audio de la frase"
+            >
               <Volume1 size={14} />
             </button>
-            <button onClick={handleCopy} className="p-1.5 text-zinc-300 hover:text-white hover:bg-zinc-700/50 rounded-md transition-colors" title="Copiar texto">
+            <button
+              onClick={handleCopy}
+              className="p-1.5 text-zinc-300 hover:text-white hover:bg-zinc-700/50 rounded-md transition-colors"
+              title="Copiar texto"
+            >
               {copied ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
             </button>
             <div className="w-px h-3.5 bg-zinc-700/80" />
             <button
-              onClick={(e) => handleCreateCard(e, targetSentence)}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleSaveToken(targetSentence);
+              }}
               className="flex items-center gap-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-[11px] font-medium px-2 py-1 rounded transition-colors"
               title="Guardar la frase completa como tarjeta"
             >
               <Quote size={11} /> Guardar frase
             </button>
+            <div className="w-px h-3.5 bg-zinc-700/80" />
+            <span className="text-[9px] text-zinc-500 px-2 hidden sm:flex items-center gap-1">
+              <kbd className="font-sans font-semibold text-[9px] text-zinc-400 bg-zinc-800 border border-zinc-700 rounded px-1 py-px">
+                Scroll
+              </kbd>
+              <span>sobre la expresión para separarla</span>
+            </span>
           </div>
+        )}
 
-           {/* Fake Capture Overlays */}
-           {captureState === 'audio' && (
-             <div className="absolute inset-x-0 bottom-full mb-4 flex justify-center pointer-events-none z-50">
-               <div className="bg-red-500/90 text-white rounded-full p-2 animate-bounce shadow-[0_0_15px_rgba(239,68,68,0.5)]">
-                 <AudioLines size={24} className="animate-pulse" />
-               </div>
-             </div>
-           )}
+        {!isReading && captureState !== 'idle' && (
+          <div className="absolute -top-10 right-0 flex items-center gap-1 bg-zinc-900/95 border border-zinc-700/60 rounded-md px-2 py-1 text-[10px] text-zinc-200 shadow-xl">
+            {captureState === 'screenshot' ? <Camera size={11} /> : <AudioLines size={11} />}
+            <span>{captureState === 'screenshot' ? 'Capturando frame…' : 'Procesando audio…'}</span>
+          </div>
+        )}
 
-          <div 
-            className="px-6 py-2 rounded max-w-4xl text-center leading-snug tracking-wide transition-all"
-            style={{
-                fontSize: `${subtitleStyles.fontSize}px`,
-              color: subtitleStyles.color,
-              backgroundColor: isHovered ? 'rgba(0,0,0,0.8)' : backgroundColorWithOpacity,
-              fontWeight: subtitleStyles.fontWeight,
-              textShadow: (() => {
-                const s = subtitleStyles.textShadow;
-                if (s <= 0) return 'none';
-                const a = (s / 100).toFixed(2);
-                const blur = Math.max(2, Math.round(s / 18));
-                  return `2px 2px ${blur}px rgba(0,0,0,${a}), -1px -1px 0 rgba(0,0,0,${a}), 1px -1px 0 rgba(0,0,0,${a}), -1px 1px 0 rgba(0,0,0,${a}), 1px 1px 0 rgba(0,0,0,${a})`;
-              })(),
-              transform: isHovered ? 'scale(1.05)' : 'scale(1)',
-              boxShadow: isHovered ? '0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.1)' : 'none'
-            }}
-          >
-            {tokens.map((tok, i) => {
-              if (tok.kind === 'punct') return <React.Fragment key={tok.key + i}>{tok.text}</React.Fragment>;
-              
-              const isTokHovered = hoveredKey === tok.key;
-              const isSaved = savedTokens.has(tok.key.toLowerCase());
-              
-              const colorClass = isTokHovered
-                ? 'text-white bg-indigo-600 shadow-[0_2px_8px_rgba(99,102,241,0.45)]'
-                : isSaved
-                ? 'text-emerald-300 border-b-2 border-emerald-400/70 hover:bg-emerald-400/10'
-                : tok.kind === 'mwe'
-                ? 'text-amber-300 border-b-2 border-amber-400 border-dotted hover:bg-amber-400/15'
-                : tok.kind === 'known'
-                ? 'border-b border-zinc-300/40 border-dashed hover:text-white hover:bg-white/10'
-                : 'opacity-90';
-                
-              const parentForSplit = tok.kind !== 'mwe' ? findParentMWE(tok.key) : null;
-              const wheelable = tok.kind === 'mwe' || !!parentForSplit;
-              
-              const handleWheel = (e: React.WheelEvent) => {
-                if (!wheelable) return;
-                e.preventDefault();
-                e.stopPropagation();
-                if (e.deltaY > 0 && tok.kind === 'mwe') {
-                  setExpandedMWEs(prev => { const n = new Set(prev); n.add(tok.key); return n; });
-                } else if (e.deltaY < 0 && parentForSplit) {
-                  setExpandedMWEs(prev => { const n = new Set(prev); n.delete(parentForSplit); return n; });
-                  setHoveredKey(null);
+        <div
+          className="text-center rounded-md px-4 py-2 transition-all duration-300"
+          style={{
+            fontSize: `${subtitleStyles.fontSize}px`,
+            color: subtitleStyles.color,
+            backgroundColor: !isReading && isHovered ? 'rgba(0,0,0,0.8)' : backgroundColorWithOpacity,
+            fontWeight: subtitleStyles.fontWeight,
+            textShadow: (() => {
+              const s = subtitleStyles.textShadow;
+              if (s <= 0) return 'none';
+              const a = (s / 100).toFixed(2);
+              const blur = Math.max(2, Math.round(s / 18));
+              return `2px 2px ${blur}px rgba(0,0,0,${a}), -1px -1px 0 rgba(0,0,0,${a}), 1px -1px 0 rgba(0,0,0,${a}), -1px 1px 0 rgba(0,0,0,${a}), 1px 1px 0 rgba(0,0,0,${a})`;
+            })(),
+            transform: !isReading && isHovered ? 'scale(1.05)' : 'scale(1)',
+            boxShadow:
+              !isReading && isHovered
+                ? '0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.1)'
+                : 'none',
+          }}
+        >
+          {isReading ? (
+            <span>{targetSentence}</span>
+          ) : (
+            <span>
+              {tokens.map((tok, i) => {
+                if (tok.kind === 'punct') {
+                  return <React.Fragment key={tok.key + i}>{tok.text}</React.Fragment>;
                 }
-              };
+                const isTokHovered = hoveredKey === tok.key;
+                const isSaved = savedTokens.has(tok.key.toLowerCase());
 
-              return (
-                <span key={tok.key + i} className="relative inline-block cursor-pointer">
-                  <span
-                    onMouseEnter={() => tok.kind !== 'unknown' && handleTokenEnter(tok.key)}
-                    onMouseLeave={handleTokenLeave}
-                    onWheel={handleWheel}
+                const colorClass = isTokHovered
+                  ? 'text-white bg-indigo-600 shadow-[0_2px_8px_rgba(99,102,241,0.45)]'
+                  : isSaved
+                    ? 'text-emerald-300 border-b-2 border-emerald-400/70 hover:bg-emerald-400/10'
+                    : tok.kind === 'mwe'
+                      ? 'text-amber-300 border-b-2 border-amber-400 border-dotted hover:bg-amber-400/15'
+                      : tok.kind === 'known'
+                        ? 'border-b border-zinc-300/40 border-dashed hover:text-white hover:bg-white/10'
+                        : 'opacity-90';
+
+                const parentForSplit = tok.kind !== 'mwe' ? findParentMWE(tok.key) : null;
+                const wheelable = tok.kind === 'mwe' || !!parentForSplit;
+                const handleWheel = (e: React.WheelEvent) => {
+                  if (!wheelable) return;
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (e.deltaY > 0 && tok.kind === 'mwe') {
+                    setExpandedMWEs((prev) => {
+                      const n = new Set(prev);
+                      n.add(tok.key);
+                      return n;
+                    });
+                  } else if (e.deltaY < 0 && parentForSplit) {
+                    setExpandedMWEs((prev) => {
+                      const n = new Set(prev);
+                      n.delete(parentForSplit);
+                      return n;
+                    });
+                    setHoveredKey(null);
+                  }
+                };
+
+                return (
+                  <span key={tok.key + i} className="relative inline-block">
+                    <span
+                      onMouseEnter={() => tok.kind !== 'unknown' && handleTokenEnter(tok.key)}
+                      onMouseLeave={handleTokenLeave}
+                      onWheel={handleWheel}
                       className={`relative rounded px-0.5 transition-all duration-150 ${
-                        isTokHovered ? 'bg-amber-400/80 text-zinc-900 shadow-sm cursor-pointer' : 
-                        isSaved ? 'bg-emerald-500/20 text-emerald-200' : ''
-                      }`}
-                  >
-                    {tok.text}
-                    {isSaved && !isTokHovered && (
-                      <Check size={9} className="inline-block ml-0.5 -mt-1 text-emerald-400" strokeWidth={3} />
+                        tok.kind !== 'unknown' ? 'cursor-help' : ''
+                      } ${colorClass}`}
+                    >
+                      {tok.text}
+                      {isSaved && !isTokHovered && (
+                        <Check size={9} className="inline-block ml-0.5 -mt-1 text-emerald-400" strokeWidth={3} />
+                      )}
+                    </span>
+                    {isTokHovered && tok.kind !== 'unknown' && (
+                      <WordPopover
+                        visible={true}
+                        onMouseEnter={() => handleTokenEnter(tok.key)}
+                        onMouseLeave={handleTokenLeave}
+                        token={tok.text}
+                        kind={tok.kind}
+                        isExpanded={expandedMWEs.has(tok.key)}
+                        isSaved={isSaved}
+                        parentMWE={tok.kind !== 'mwe' ? findParentMWE(tok.key) : null}
+                        onToggleExpand={() => toggleExpandMWE(tok.key)}
+                        onRejoinParent={(parent) => {
+                          setExpandedMWEs((prev) => {
+                            const n = new Set(prev);
+                            n.delete(parent);
+                            return n;
+                          });
+                          setHoveredKey(null);
+                        }}
+                        onSave={(e, token) => {
+                          e.stopPropagation();
+                          handleSaveToken(token);
+                        }}
+                      />
                     )}
                   </span>
-                  
-                  {isTokHovered && tok.kind !== 'unknown' && (
-                    <WordPopover
-                      visible={true}
-                      onMouseEnter={() => handleTokenEnter(tok.key)}
-                      onMouseLeave={handleTokenLeave}
-                      token={tok.text}
-                      kind={tok.kind}
-                      isExpanded={expandedMWEs.has(tok.key)}
-                      isSaved={isSaved}
-                      parentMWE={tok.kind !== 'mwe' ? findParentMWE(tok.key) : null}
-                      onToggleExpand={() => toggleExpandMWE(tok.key)}
-                      onRejoinParent={(parent) => {
-                        setExpandedMWEs(prev => { const n = new Set(prev); n.delete(parent); return n; });
-                        setHoveredKey(null);
-                      }}
-                      onSave={handleSaveToken}
-                    />
-                  )}
-                </span>
-              );
-            })}
-          </div>
+                );
+              })}
+            </span>
+          )}
         </div>
       </div>
     </div>
   );
 }
-
-
-
