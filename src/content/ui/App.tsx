@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Toaster, toast } from 'sonner';
 import { CheckCircle2 } from 'lucide-react';
@@ -43,6 +43,7 @@ export function App({ adapter, videoElement, videoOverlayRoot }: AppProps) {
   const [activeCue, setActiveCue] = useState<ActiveCue | null>(null);
   const [saveTick, setSaveTick] = useState<number | null>(null);
   const cueLanguageRef = useRef('en');
+  const wasPlayingRef = useRef(false);
 
   // Sync dark mode on hosts + overlay root so theme.css `.dark` selector works.
   useEffect(() => {
@@ -97,11 +98,34 @@ export function App({ adapter, videoElement, videoOverlayRoot }: AppProps) {
     }
   }, [adapter]);
 
+  // Pause video while the user is reading a popover; resume on leave.
+  const handleTokenHoverChange = useCallback(
+    (hovered: boolean) => {
+      if (!videoElement) return;
+      if (hovered) {
+        if (!videoElement.paused) {
+          wasPlayingRef.current = true;
+          videoElement.pause();
+        } else {
+          wasPlayingRef.current = false;
+        }
+      } else if (wasPlayingRef.current) {
+        wasPlayingRef.current = false;
+        void videoElement.play().catch(() => {});
+      }
+    },
+    [videoElement],
+  );
+
   // Bridge runtime messages (from background) → local actions.
   useEffect(() => {
     const handler = (msg: { type?: string; command?: string }) => {
       if (msg?.type === 'TOGGLE_PANEL') {
         setPanelOpen(!useKivaraStore.getState().panelOpen);
+      } else if (msg?.type === 'OPEN_PANEL') {
+        setPanelOpen(true);
+      } else if (msg?.type === 'CLOSE_PANEL') {
+        setPanelOpen(false);
       } else if (msg?.type === 'RUN_COMMAND') {
         switch (msg.command) {
           case 'save_word':
@@ -200,11 +224,21 @@ export function App({ adapter, videoElement, videoOverlayRoot }: AppProps) {
           mode={mode}
           saveRequestKey={saveTick}
           onSaveCard={handleSaveCard}
+          onTokenHoverChange={handleTokenHoverChange}
         />
       </div>,
       videoOverlayRoot,
     );
-  }, [activeCue, enabled, isDarkMode, mode, saveTick, subtitleStyles, videoOverlayRoot]);
+  }, [
+    activeCue,
+    enabled,
+    isDarkMode,
+    mode,
+    saveTick,
+    subtitleStyles,
+    videoOverlayRoot,
+    handleTokenHoverChange,
+  ]);
 
   return (
     <div
@@ -217,14 +251,22 @@ export function App({ adapter, videoElement, videoOverlayRoot }: AppProps) {
 
       {overlayPortal}
 
-      <div className="pointer-events-auto">
-        {enabled && panelOpen && (
+      {enabled && panelOpen && (
+        <div
+          className="pointer-events-auto"
+          style={{
+            position: 'absolute',
+            top: 0,
+            right: 0,
+            bottom: 0,
+            display: 'flex',
+            alignItems: 'stretch',
+          }}
+        >
           <SidePanel
             isPopupMode={isPopupMode}
-            togglePopupMode={() => {
-              if (isPopupMode) setPanelOpen(false);
-              else setIsPopupMode(!isPopupMode);
-            }}
+            onClose={() => setPanelOpen(false)}
+            togglePopupMode={() => setIsPopupMode(!isPopupMode)}
             isDarkMode={isDarkMode}
             toggleDarkMode={() => setIsDarkMode(!isDarkMode)}
             styles={subtitleStyles}
@@ -241,8 +283,8 @@ export function App({ adapter, videoElement, videoOverlayRoot }: AppProps) {
               monolingual: '',
             }}
           />
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -9,6 +9,7 @@ import { SubtitleStyles, AnkiMapping } from '../../app/types';
 interface SidePanelProps {
   isPopupMode: boolean;
   togglePopupMode: () => void;
+  onClose: () => void;
   isDarkMode: boolean;
   toggleDarkMode: () => void;
   styles: SubtitleStyles;
@@ -21,6 +22,7 @@ interface SidePanelProps {
 export function SidePanel({ 
   isPopupMode, 
   togglePopupMode,
+  onClose,
   isDarkMode,
   toggleDarkMode,
   styles,
@@ -32,11 +34,13 @@ export function SidePanel({
   const [activeTab, setActiveTab] = useState<'subtitles' | 'cards' | 'settings'>('cards');
 
   return (
-    <div className={`flex flex-col bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 shadow-xl overflow-hidden ${
-      isPopupMode 
-        ? 'w-[360px] h-[600px] rounded-xl fixed top-24 right-8 z-50' 
-        : 'w-full md:w-[400px] h-full rounded-none border-l'
-    }`}>
+    <div
+      className={`flex flex-col bg-white dark:bg-zinc-950 shadow-2xl overflow-hidden ${
+        isPopupMode
+          ? 'w-[360px] h-[600px] rounded-xl fixed top-24 right-8 z-50 border border-zinc-200 dark:border-zinc-800'
+          : 'w-[400px] h-full rounded-none border-l border-zinc-200 dark:border-zinc-800'
+      }`}
+    >
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b border-zinc-100 dark:border-zinc-800/60 bg-zinc-50/50 dark:bg-zinc-900/50 backdrop-blur">
         <KivaraLingoLogo size={18} isDark={isDarkMode} />
@@ -55,14 +59,13 @@ export function SidePanel({
           >
             {isPopupMode ? <LayoutGrid size={16} /> : <ExternalLink size={16} />}
           </button>
-          {isPopupMode && (
-            <button 
-              onClick={togglePopupMode}
-              className="p-1.5 text-zinc-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-md transition-colors"
-            >
-              <X size={16} />
-            </button>
-          )}
+          <button
+            onClick={onClose}
+            className="p-1.5 text-zinc-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-md transition-colors"
+            title="Cerrar panel"
+          >
+            <X size={16} />
+          </button>
         </div>
       </div>
 

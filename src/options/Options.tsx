@@ -35,6 +35,7 @@ export function Options() {
         <SidePanel
           isPopupMode={false}
           togglePopupMode={() => {}}
+          onClose={() => {}}
           isDarkMode={isDarkMode}
           toggleDarkMode={() => setIsDarkMode(!isDarkMode)}
           styles={subtitleStyles}
