@@ -43,10 +43,14 @@ export function SubtitleOverlay({
     hoveredKeyRef.current = hoveredKey;
   }, [hoveredKey]);
 
-  // Notify parent (App) so it can pause/resume the underlying <video>.
+  // Notify parent (App) so it can pause/resume the underlying <video>. We
+  // pause whenever ANY part of the subtitle box is hovered — not just when a
+  // dictionary token gets focus — so "hover sobre el subtítulo" pauses the
+  // video even on platforms (e.g. YouTube) where most tokens are tagged
+  // `unknown` and don't fire `handleTokenEnter`.
   useEffect(() => {
-    onTokenHoverChange?.(hoveredKey !== null);
-  }, [hoveredKey, onTokenHoverChange]);
+    onTokenHoverChange?.(isHovered || hoveredKey !== null);
+  }, [isHovered, hoveredKey, onTokenHoverChange]);
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => {

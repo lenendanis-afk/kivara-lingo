@@ -5,6 +5,7 @@ import { CheckCircle2 } from 'lucide-react';
 import { sendMessage } from 'webext-bridge/content-script';
 import { SidePanel } from './SidePanel';
 import { SubtitleOverlay } from './SubtitleOverlay';
+import { applyCleanupCss } from './cleanup-css';
 import { useKivaraStore } from '../../shared/store';
 import { captureFrame } from '../capture/frame';
 import type { CreateCardRequest, CreateCardResponse } from '../../shared/types';
@@ -33,6 +34,7 @@ export function App({ adapter, videoElement, videoOverlayRoot }: AppProps) {
     mode,
     subtitleStyles,
     ankiMapping,
+    cleanup,
     setPanelOpen,
     setIsPopupMode,
     setIsDarkMode,
@@ -44,6 +46,25 @@ export function App({ adapter, videoElement, videoOverlayRoot }: AppProps) {
   const [saveTick, setSaveTick] = useState<number | null>(null);
   const cueLanguageRef = useRef('en');
   const wasPlayingRef = useRef(false);
+
+  // Apply the "Limpieza visual" CSS whenever the toggles change. The CSS is
+  // platform-aware (the matching selectors live in cleanup-css.ts) so the
+  // same setting can hide YouTube's bottom controls *and* HBO Max's hover
+  // gradients without leaking onto pages we don't recognise.
+  useEffect(() => {
+    if (!enabled) {
+      applyCleanupCss({ hideUI: false, hideShadows: false, platform: adapter?.platform });
+      return;
+    }
+    applyCleanupCss({
+      hideUI: cleanup.hideUI,
+      hideShadows: cleanup.hideShadows,
+      platform: adapter?.platform,
+    });
+    return () => {
+      applyCleanupCss({ hideUI: false, hideShadows: false, platform: adapter?.platform });
+    };
+  }, [cleanup.hideUI, cleanup.hideShadows, adapter?.platform, enabled]);
 
   // Sync dark mode on hosts + overlay root so theme.css `.dark` selector works.
   useEffect(() => {
