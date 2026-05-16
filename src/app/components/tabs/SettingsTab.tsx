@@ -202,7 +202,7 @@ export function SettingsTab() {
             <Toggle on={asr.enabled} onChange={(v) => setAsr({ ...asr, enabled: v })} />
           </Row>
           <p className="text-[10px] text-zinc-500 dark:text-zinc-500 leading-snug -mt-0.5">
-            Cuando una plataforma no expone subtítulos (ej. video sin captions), se ejecuta Whisper localmente en wasm. El modelo se descarga la primera vez (~75 MB) y queda cacheado. La integración completa llega en la Fase 3.
+            Cuando una plataforma no expone subtítulos (ej. video sin captions), se ejecuta Whisper.cpp localmente en WebAssembly. El modelo se descarga la primera vez (~75 MB) y queda cacheado en el navegador.
           </p>
         </Section>
 
@@ -348,10 +348,18 @@ function SegmentedControl<T extends string>({ options, value, onChange }: {
 function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) {
   return (
     <button
+      type="button"
       onClick={() => onChange(!on)}
       className={`relative shrink-0 w-9 h-5 rounded-full transition-colors ${on ? 'bg-indigo-600 dark:bg-indigo-500' : 'bg-zinc-300 dark:bg-zinc-700'}`}
     >
-      <span className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${on ? 'translate-x-4' : ''}`} />
+      {/* Inline `transform` is used instead of a Tailwind utility because the
+          panel renders inside a Shadow DOM with a separately scanned content
+          set; `translate-x-4` was being purged from the bundle, which made
+          the knob change color without ever sliding. */}
+      <span
+        className="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform duration-200"
+        style={{ transform: on ? 'translateX(16px)' : 'translateX(0)' }}
+      />
     </button>
   );
 }

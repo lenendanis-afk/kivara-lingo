@@ -73,27 +73,24 @@ export function Onboarding() {
     setPing({ status: 'pinging' });
     try {
       const r = (await sendMessage('ANKI_PING', { url }, 'background')) as AnkiPingResponse;
-      if (r.ok) setPing({ status: 'ok', version: r.version });
-      else setPing({ status: 'error', error: r.error });
+      if (r.ok) {
+        setPing({ status: 'ok', version: r.version });
+        // Eagerly fetch decks + models so the next step is ready when the
+        // user clicks "Siguiente". This avoids the empty-dropdown trap.
+        void loadDecksAndModels();
+      } else {
+        setPing({ status: 'error', error: r.error });
+      }
     } catch (err) {
       setPing({ status: 'error', error: err instanceof Error ? err.message : 'unknown' });
     }
   }
 
-  async function loadDecks() {
+  async function loadDecksAndModels() {
     setBusy(true);
     try {
       const r = (await sendMessage('ANKI_DECKS', { url }, 'background')) as AnkiListsResponse;
       if (r.decks) setDecks(r.decks);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function loadModels() {
-    setBusy(true);
-    try {
-      const r = (await sendMessage('ANKI_MODELS', { url }, 'background')) as AnkiListsResponse;
       if (r.models) setModels(r.models);
     } finally {
       setBusy(false);
@@ -106,21 +103,47 @@ export function Onboarding() {
       const r = (await sendMessage('ANKI_FIELDS', { url, modelName }, 'background')) as AnkiFieldsResponse;
       if (r.fields?.length) {
         setFields(r.fields);
+        // Only auto-fill mapping slots the user hasn't already configured —
+        // explicit choices must survive a model change.
+        const userMapped = new Set(Object.keys(ankiMapping.fieldSources));
+        const usedSources = new Set(Object.values(ankiMapping.fieldSources));
         const suggested: Record<string, FieldSource> = {};
         for (const hint of FIELD_HINTS) {
-          const match = r.fields.find((f) => hint.suggestions.some((s) => s.test(f)));
-          if (match) suggested[match] = FIELD_TO_SOURCE[hint.key] ?? 'manual';
+          const src: FieldSource = FIELD_TO_SOURCE[hint.key] ?? 'manual';
+          if (usedSources.has(src)) continue;
+          const match = r.fields.find((f) => !userMapped.has(f) && hint.suggestions.some((s) => s.test(f)));
+          if (match) {
+            suggested[match] = src;
+            userMapped.add(match);
+            usedSources.add(src);
+          }
         }
         setAnkiMapping({
           ...ankiMapping,
           modelName,
           fieldSources: { ...ankiMapping.fieldSources, ...suggested },
         });
+      } else {
+        setFields([]);
       }
     } finally {
       setBusy(false);
     }
   }
+
+  // Re-ping when the user lands on the Anki step (so they don't have to click).
+  useEffect(() => {
+    if (step === 'anki' && ping.status === 'idle') void runPing();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step]);
+
+  // Pull fields the first time the mapping step opens with a known model.
+  useEffect(() => {
+    if (step === 'mapping' && fields == null && ankiMapping.modelName) {
+      void loadFields(ankiMapping.modelName);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step]);
 
   function next() {
     const idx = STEPS.findIndex((s) => s.id === step);
@@ -133,15 +156,32 @@ export function Onboarding() {
     if (idx > 0) setStep(STEPS[idx - 1].id);
   }
 
-  function complete() {
-    setOnboarding({ completed: true, completedAt: Date.now() });
-    setStep('done');
+  function openDemo() {
     try {
       chrome.tabs.create({ url: DEMO_URL });
     } catch {
-      // ignore (not running inside extension context, e.g. dev preview)
+      // Running outside an extension context (e.g. dev preview) — open in
+      // the same tab so the link still works.
+      window.open(DEMO_URL, '_blank', 'noopener');
     }
   }
+
+  function complete() {
+    setOnboarding({ completed: true, completedAt: Date.now() });
+    setStep('done');
+    openDemo();
+  }
+
+  // Block "Siguiente" until each step's preconditions are met. This is what
+  // prevents the user from sliding past a broken Anki connection or skipping
+  // the field mapping entirely.
+  const canAdvance = (() => {
+    if (step === 'anki') return ping.status === 'ok';
+    if (step === 'mapping') {
+      return Boolean(ankiMapping.deckName && ankiMapping.modelName);
+    }
+    return true;
+  })();
 
   const progress = useMemo(() => {
     const idx = STEPS.findIndex((s) => s.id === step);
@@ -237,54 +277,68 @@ export function Onboarding() {
           <Section title="Mazo, modelo y campos" subtitle="Elegimos dónde guardar tus tarjetas y cómo nombrar cada campo.">
             <Row label="Mazo destino">
               <div className="flex gap-2">
-                <input
-                  type="text"
-                  list="deck-options"
-                  value={ankiMapping.deckName}
+                <select
+                  value={
+                    decks && decks.includes(ankiMapping.deckName) ? ankiMapping.deckName : ''
+                  }
                   onChange={(e) => setAnkiMapping({ ...ankiMapping, deckName: e.target.value })}
-                  className="sl-input flex-1 text-sm px-3 py-2 rounded border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900"
-                />
-                <datalist id="deck-options">
+                  disabled={!decks || decks.length === 0}
+                  className="sl-select flex-1 text-sm px-3 py-2 rounded border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 disabled:opacity-50"
+                >
+                  <option value="">— Selecciona un mazo —</option>
                   {(decks || []).map((d) => (
-                    <option key={d} value={d} />
+                    <option key={d} value={d}>
+                      {d}
+                    </option>
                   ))}
-                </datalist>
+                  {/* Preserve any deck name that doesn't yet exist on the
+                      AnkiConnect side (we'll create it on first card save). */}
+                  {ankiMapping.deckName && decks && !decks.includes(ankiMapping.deckName) && (
+                    <option value={ankiMapping.deckName}>
+                      {ankiMapping.deckName} (nuevo)
+                    </option>
+                  )}
+                </select>
                 <button
-                  onClick={loadDecks}
+                  onClick={loadDecksAndModels}
                   disabled={busy}
                   className="px-3 py-2 text-[12px] rounded border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-50"
                 >
-                  Cargar lista
+                  Refrescar
                 </button>
               </div>
+              <input
+                type="text"
+                value={ankiMapping.deckName}
+                onChange={(e) => setAnkiMapping({ ...ankiMapping, deckName: e.target.value })}
+                placeholder="O escribe un nombre nuevo (se creará al guardar)"
+                className="sl-input w-full text-[11px] px-3 py-1.5 mt-1 rounded border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/50 text-zinc-600 dark:text-zinc-300"
+              />
             </Row>
 
             <Row label="Modelo de nota">
-              <div className="flex gap-2">
-                <select
-                  value={ankiMapping.modelName}
-                  onChange={(e) => {
-                    const m = e.target.value;
-                    setAnkiMapping({ ...ankiMapping, modelName: m });
-                    if (m) loadFields(m);
-                  }}
-                  className="sl-select flex-1 text-sm px-3 py-2 rounded border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900"
-                >
-                  <option value="">— Selecciona un modelo —</option>
-                  {(models || [ankiMapping.modelName]).filter(Boolean).map((m) => (
-                    <option key={m} value={m}>
-                      {m}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  onClick={loadModels}
-                  disabled={busy}
-                  className="px-3 py-2 text-[12px] rounded border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-50"
-                >
-                  Cargar
-                </button>
-              </div>
+              <select
+                value={ankiMapping.modelName}
+                onChange={(e) => {
+                  const m = e.target.value;
+                  setAnkiMapping({ ...ankiMapping, modelName: m });
+                  if (m) void loadFields(m);
+                }}
+                disabled={!models || models.length === 0}
+                className="sl-select w-full text-sm px-3 py-2 rounded border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 disabled:opacity-50"
+              >
+                <option value="">— Selecciona un modelo —</option>
+                {(models || (ankiMapping.modelName ? [ankiMapping.modelName] : [])).map((m) => (
+                  <option key={m} value={m}>
+                    {m}
+                  </option>
+                ))}
+              </select>
+              {busy && (
+                <span className="inline-flex items-center gap-1 text-[10px] text-zinc-500 dark:text-zinc-400 mt-1">
+                  <Loader2 size={10} className="animate-spin" /> cargando…
+                </span>
+              )}
             </Row>
 
             {fields && fields.length > 0 && (
@@ -363,7 +417,15 @@ export function Onboarding() {
           {step !== 'done' ? (
             <button
               onClick={next}
-              className="inline-flex items-center gap-1 text-sm px-4 py-2 rounded bg-indigo-600 text-white hover:bg-indigo-500"
+              disabled={!canAdvance}
+              title={
+                step === 'anki' && !canAdvance
+                  ? 'Necesitamos confirmar la conexión con AnkiConnect antes de continuar.'
+                  : step === 'mapping' && !canAdvance
+                  ? 'Elige un mazo y un modelo de notas.'
+                  : undefined
+              }
+              className="inline-flex items-center gap-1 text-sm px-4 py-2 rounded bg-indigo-600 text-white hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {step === 'demo' ? 'Empezar' : 'Siguiente'} <ChevronRight size={14} />
             </button>
