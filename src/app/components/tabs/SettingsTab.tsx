@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { useKivaraStore } from '../../../shared/store';
 import type { AiProvider, TranslateProvider } from '../../../shared/types';
+import { DictPacksSection } from './DictPacksSection';
 
 export function SettingsTab() {
   const {
@@ -250,6 +251,9 @@ export function SettingsTab() {
             El diccionario offline siempre se consulta primero. Los proveedores externos solo se usan si la palabra no aparece allí, y las respuestas se cachean en IndexedDB.
           </p>
         </Section>
+
+        {/* Diccionarios offline (Yomitan packs) */}
+        <DictPacksSection />
 
         {/* IA (premium) */}
         <Section

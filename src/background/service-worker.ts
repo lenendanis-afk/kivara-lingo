@@ -37,6 +37,7 @@ import { translateText } from './translate';
 import { speak } from './tts';
 import { enrichWithAi, getAiSettings, getResolvedNativeLang } from './ai-enrich';
 import { lookupDictionary } from '../content/nlp/dictionary';
+import { lookupYomitanTerm } from '../content/nlp/yomitan';
 
 console.log('[Kivara Lingo] service worker booting');
 
@@ -267,8 +268,36 @@ onMessage('RESOLVE_WORD', async ({ data }) => {
     return asJson(empty);
   }
 
-  const local = lookupDictionary(token, sourceLang);
+  // 1. Bundled dictionary (fast, sync).
+  let local = lookupDictionary(token, sourceLang);
+
+  // 2. User-installed Yomitan packs (async IndexedDB lookup). We only consult
+  //    them on a bundle miss to avoid the round-trip when the popover can
+  //    already render the curated entry.
+  let yomitanPackTitle: string | null = null;
+  if (!local) {
+    try {
+      const hit = await lookupYomitanTerm(token, sourceLang);
+      if (hit) {
+        local = hit.entry;
+        yomitanPackTitle = hit.pack.title;
+      }
+    } catch (err) {
+      // Pack lookup errors are non-fatal — fall through to remote.
+      console.warn('[Kivara Lingo] yomitan lookup failed', err);
+    }
+  }
   waves.push({ stage: 'local', entry: local ?? null });
+  // Emit a synthetic 'remote' wave so the popover shows "via <pack>" without
+  // hitting the network when a Yomitan pack already covered the word.
+  if (local && yomitanPackTitle) {
+    waves.push({
+      stage: 'remote',
+      translation: local.translation,
+      provider: `pack:${yomitanPackTitle}`,
+      cached: false,
+    });
+  }
 
   if (!local) {
     try {

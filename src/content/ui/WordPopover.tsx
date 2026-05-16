@@ -312,6 +312,18 @@ export function WordPopover({
               "{meta.monolingual}"
             </div>
           )}
+          {meta.examples && meta.examples.length > 0 && (
+            <div className="mt-1.5 space-y-1">
+              {meta.examples.slice(0, 2).map((ex, i) => (
+                <div
+                  key={i}
+                  className="text-[11px] text-zinc-300/90 leading-snug normal-case border-l-2 border-amber-700/40 pl-2"
+                >
+                  {ex}
+                </div>
+              ))}
+            </div>
+          )}
           {resolved.remoteError && !meta.translation && (
             <div className="text-[10px] text-rose-300/80 normal-case">
               No se pudo traducir: {resolved.remoteError}
@@ -462,10 +474,14 @@ function PopoverDivider() {
  * Keeps marketing-y names short so they fit on one line.
  */
 function formatSource(source: string | null): string {
+  if (!source) return '\u2014';
+  // Yomitan packs come in as "pack:<title>" so we can show the pack name
+  // without colliding with the named providers.
+  if (source.startsWith('pack:')) {
+    const title = source.slice(5).trim();
+    return title ? `Pack: ${title}` : 'Pack';
+  }
   switch (source) {
-    case null:
-    case undefined:
-      return '\u2014';
     case 'dictionary':
       return 'Diccionario offline';
     case 'cache':

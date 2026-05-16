@@ -182,6 +182,52 @@ function makeChromeStorage(area: 'sync' | 'local' = 'sync'): StateStorage {
 
 const STORE_KEY = 'kivara-lingo-state';
 
+/**
+ * Defensive merge for persisted state. Zustand's default shallow merge only
+ * fills in MISSING top-level keys — it doesn't recurse, so a snapshot saved
+ * before a `translate.tiersEnabled` field existed will load with
+ * `translate.tiersEnabled === undefined` and crash SettingsTab.
+ *
+ * This walks each top-level settings group and re-applies the default if
+ * either the group is missing or any of its inner fields are missing. Existing
+ * user choices are preserved.
+ */
+function mergePersisted(persistedState: unknown, currentState: KivaraState): KivaraState {
+  const persisted = (persistedState ?? {}) as Partial<KivaraState>;
+  return {
+    ...currentState,
+    ...persisted,
+    subtitleStyles: { ...DEFAULT_SUBTITLE_STYLES, ...(persisted.subtitleStyles ?? {}) },
+    ankiMapping: {
+      ...DEFAULT_ANKI_MAPPING,
+      ...(persisted.ankiMapping ?? {}),
+      fieldSources: {
+        ...DEFAULT_ANKI_MAPPING.fieldSources,
+        ...(persisted.ankiMapping?.fieldSources ?? {}),
+      },
+    },
+    capture: { ...DEFAULT_CAPTURE, ...(persisted.capture ?? {}) },
+    cleanup: { ...DEFAULT_CLEANUP, ...(persisted.cleanup ?? {}) },
+    translate: {
+      ...DEFAULT_TRANSLATE,
+      ...(persisted.translate ?? {}),
+      tiersEnabled: {
+        ...DEFAULT_TRANSLATE.tiersEnabled,
+        ...(persisted.translate?.tiersEnabled ?? {}),
+      },
+      freeChain: Array.isArray(persisted.translate?.freeChain)
+        ? persisted.translate!.freeChain
+        : DEFAULT_TRANSLATE.freeChain,
+      premiumChain: Array.isArray(persisted.translate?.premiumChain)
+        ? persisted.translate!.premiumChain
+        : DEFAULT_TRANSLATE.premiumChain,
+    },
+    asr: { ...DEFAULT_ASR, ...(persisted.asr ?? {}) },
+    ai: { ...DEFAULT_AI, ...(persisted.ai ?? {}) },
+    onboarding: { ...DEFAULT_ONBOARDING, ...(persisted.onboarding ?? {}) },
+  };
+}
+
 export const useKivaraStore = create<KivaraState>()(
   persist(
     (set) => ({
@@ -258,6 +304,10 @@ export const useKivaraStore = create<KivaraState>()(
         ai: state.ai,
         onboarding: state.onboarding,
       }),
+      // Deep-merge defaults into the persisted slice so a snapshot saved by an
+      // older build (e.g. missing translate.tiersEnabled) doesn't crash the
+      // panel with `Cannot read properties of undefined (reading 'free')`.
+      merge: (persisted, current) => mergePersisted(persisted, current as KivaraState),
     },
   ),
 );

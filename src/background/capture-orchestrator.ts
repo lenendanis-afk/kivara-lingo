@@ -23,6 +23,7 @@ interface ResolveContext {
   bilingual: string;
   monolingual: string;
   phonetic: string;
+  examples: string[];
   ai: AiEnrichment | null;
 }
 
@@ -58,6 +59,7 @@ function resolveField(field: string, source: FieldSource, ctx: ResolveContext): 
       const f = field.toLowerCase();
       if (/phon|ipa|pronun/.test(f)) return ctx.phonetic;
       if (/mono|definition|definición/.test(f)) return ctx.monolingual;
+      if (/example|ejemplo|sample/.test(f)) return ctx.examples.join('<br>');
       return ctx.bilingual || ctx.translation;
     }
     case 'ai-definition':
@@ -162,6 +164,7 @@ export async function createCardFromRequest(
     bilingual: dictionaryHit?.bilingual ?? dictionaryHit?.translation ?? '',
     monolingual: dictionaryHit?.monolingual ?? '',
     phonetic: dictionaryHit?.phonetic ?? '',
+    examples: dictionaryHit?.examples ?? [],
     ai: aiData,
   };
 
