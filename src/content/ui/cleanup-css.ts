@@ -78,10 +78,42 @@ const RULES: Record<Platform, PlatformRules> = {
     ],
   },
   hbo: {
+    // Max's player is a styled-components tree under `Fuse-Web-Play`. Inspecting
+    // a live session yields containers like `ControlsContainer-Fuse-Web-Play`,
+    // `ControlsHeader-...`, `ControlsCenter-...`, `ControlsFooter-...`, plus the
+    // `AutohiderContainer` that wraps the chrome and fades in/out on pointer
+    // move. Anchoring on the stable `Controls*` / `Autohider` substrings is
+    // resilient across releases.
     hideUI: [
+      // Generic testid-style fallbacks (older Max builds expose these).
       '[data-testid="player-overlay"]',
       '[data-testid="player-controls"]',
       '[data-testid="controls-container"]',
+      // Current Max/HBO chrome containers.
+      '[class*="ControlsContainer"]',
+      '[class*="ControlsHeader"]',
+      '[class*="ControlsCenter"]',
+      '[class*="ControlsCenterInfoContainer"]',
+      '[class*="ControlsFooter"]',
+      '[class*="ControlsFooterTop"]',
+      '[class*="ControlsFooterBottom"]',
+      '[class*="AutohiderContainer"]',
+      '[class*="OverlayContainer-Fuse-Web-Play"]',
+      '[class*="OverlayRootContainer"]',
+      '[class*="LayerContainer"]',
+      '[class*="PlayerDrawer"]',
+      '[class*="PlayerButton"]',
+      '[class*="ScrubberContainer"]',
+      '[class*="ScrubberInput"]',
+      '[class*="ScrubberTime"]',
+      '[class*="ScrubberTopInfo"]',
+      '[class*="BottomTrinity"]',
+      '[class*="CenterTrinity"]',
+      '[class*="CastTrinity"]',
+      '[class*="CastContainer"]',
+      '[class*="DiscoveryTabsContainer"]',
+      '[class*="ContentDiscoveryContainer"]',
+      // Older variant names kept for safety.
       '[class*="PlayerControls"]',
       '[class*="player-controls"]',
       '[class*="ControlsOverlay"]',
@@ -91,6 +123,9 @@ const RULES: Record<Platform, PlatformRules> = {
       '[class*="TopBar"][class*="player" i]',
     ],
     hideShadows: [
+      '[class*="TopGradient"]',
+      '[class*="BottomGradient"]',
+      '[class*="ControlsCenterGradient"]',
       '[class*="Gradient"]',
       '[class*="gradient"]',
       '[class*="Scrim"]',
@@ -99,6 +134,7 @@ const RULES: Record<Platform, PlatformRules> = {
       '[class*="vignette"]',
       '[class*="HoverOverlay"]',
       '[class*="hover-overlay"]',
+      '[class*="ProtectionLayerContainer"]',
     ],
   },
   prime: {
@@ -136,7 +172,14 @@ export function buildCleanupCss({ hideUI, hideShadows, platform }: BuildOpts): s
   }
   if (selectors.length === 0) return '';
 
+  // Combine `display: none` with the visibility/opacity overrides so we cover
+  // both static chrome (which would otherwise still take layout space) and
+  // styled-components animated overlays that re-assert `opacity: 1` via
+  // `style=""` on every pointermove. `!important` beats inline styles at the
+  // same specificity tier.
   return `${Array.from(new Set(selectors)).join(',\n')} {
+    display: none !important;
+    visibility: hidden !important;
     opacity: 0 !important;
     pointer-events: none !important;
     background: transparent !important;
