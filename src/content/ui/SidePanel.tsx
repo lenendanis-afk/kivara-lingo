@@ -94,8 +94,10 @@ export function SidePanel({
         ))}
       </div>
 
-      {/* Tab Content */}
-      <div className="flex-1 overflow-hidden">
+      {/* Tab Content — `min-h-0` lets `flex-1` shrink below its content
+          so the inner `overflow-y-auto` actually scrolls instead of pushing
+          the panel taller than its container. */}
+      <div className="flex-1 min-h-0 overflow-hidden">
         {activeTab === 'subtitles' && (
           <SubtitlesTab styles={styles} setStyles={setStyles} />
         )}

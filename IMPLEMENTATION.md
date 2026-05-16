@@ -519,30 +519,47 @@ export async function captureFrame(video: HTMLVideoElement): Promise<Blob> {
 
 ### 8.2 Audio del cue
 
-Flujo:
+Flujo real (implementado en `src/offscreen/audio-processor.ts`):
 
-1. `chrome.tabCapture.capture({ audio: true, video: false })` → `MediaStream`.
-2. Pasarlo a un **Offscreen Document** (porque el service worker no tiene Audio API).
-3. En el offscreen: `MediaRecorder` graba un buffer rolling de N segundos (default 30s).
-4. Cuando se dispara "guardar tarjeta": cortar el buffer entre `cue.start` y `cue.end + post-roll`.
-5. Encode a MP3 (`lamejs`) o WebM.
-6. Devolver `Blob` al service worker → enviar a Anki.
+1. **Service Worker** llama `chrome.tabCapture.getMediaStreamId({ targetTabId })` y lo pasa al offscreen.
+2. **Offscreen Document** se crea con `reasons: ['USER_MEDIA', 'AUDIO_PLAYBACK']`. El `AUDIO_PLAYBACK` es necesario porque, al consumir el `MediaStream` con `getUserMedia({ chromeMediaSource: 'tab' })`, el audio original de la pestaña se silencia — hay que re-rutearlo manualmente a `AudioContext.destination` para que el usuario lo siga oyendo.
+3. `MediaRecorder` graba un buffer rolling WebM/Opus (default 30s, ajustable en Settings).
+4. Cuando se dispara "guardar tarjeta", el SW envía `OFFSCREEN_EXTRACT_AUDIO_CLIP { startMs, endMs, format, useVad, preRollMs, postRollMs }`.
+5. El offscreen decodifica el WebM al `OfflineAudioContext` a 16 kHz mono PCM (`audio-encoder.ts::decodeToMonoPcm`).
+6. Si `useVad`, se ajusta la ventana al envoltorio de habla detectado (`vad.ts::tightenToSpeech`).
+7. Se encodea como **WAV/RIFF** mono 16 kHz (`audio-encoder.ts::encodeWavMono`) y se devuelve como data URL para AnkiConnect.
 
 Manifest necesita `"offscreen"` permission. El offscreen document se crea on-demand:
 
 ```ts
 await chrome.offscreen.createDocument({
   url: 'offscreen/offscreen.html',
-  reasons: ['USER_MEDIA'],
-  justification: 'Procesar audio capturado de la pestaña',
+  reasons: ['USER_MEDIA', 'AUDIO_PLAYBACK'],
+  justification: 'Capturar audio de la pestaña y re-rutearlo a los altavoces',
 });
 ```
 
+**WAV vs MP3:** la implementación actual emite WAV PCM 16 kHz mono. Es el formato que mejor consume Whisper.cpp y AnkiConnect lo acepta sin problema. Convertir a MP3 requeriría una dependencia adicional (`lamejs`) que se ha evitado intencionalmente — el WAV ronda los ~32 kB/seg, suficientemente compacto para tarjetas de 2-5 s. Ver `audio-encoder.ts` para el header RIFF escrito a mano.
+
 ### 8.3 Voice Activity Detection (VAD)
 
-Para el "Modo Auto" del Settings tab: detectar inicio/fin real de la frase hablada (los cues están desalineados a veces).
+Implementado en `src/offscreen/vad.ts`. Es **RMS-energy con noise-floor adaptativo** — sin dependencias externas, ~7 kB, suficiente para diálogo doblado en streaming.
 
-Recomendación: **Silero VAD** (modelo 1MB en ONNX, corre en WASM). Alternativa más simple: detección de RMS energy con threshold.
+Constantes hand-tuned (todas exportadas):
+
+| Constante | Valor | Para qué |
+|---|---|---|
+| `FRAME_MS` | 20 | Tamaño de frame del análisis RMS. |
+| `SMOOTH_WINDOW` | 5 | Frames de suavizado (mediana) para evitar chattering. |
+| `NOISE_FLOOR_PERCENTILE` | 0.2 | Percentil del RMS sin habla — robusto contra picos. |
+| `SPEECH_RATIO` | 2.5 | Frame es speech si RMS > noise · 2.5. |
+| `MIN_ABSOLUTE_RMS` | 0.005 | Piso absoluto (~-46 dBFS) — evita falsos positivos en silencio. |
+| `MIN_SPEECH_MS` | 120 | Descarta regiones < 120 ms (chasquidos, transientes). |
+| `MAX_GAP_MS` | 220 | Fusiona regiones separadas por <220 ms (pausa entre palabras). |
+
+`detectSpeech()` devuelve todas las regiones del buffer; `tightenToSpeech(start, end)` elige la región que solapa la ventana deseada y aplica `preRollMs`/`postRollMs`. Si el VAD no encuentra habla creíble, devuelve la ventana original (`usedVad: false`) — fail-open por diseño.
+
+**Por qué no Silero:** habría añadido ~1 MB de ONNX + un runtime WASM. La detección RMS funciona muy bien para audio de streaming porque ya viene comprimido con normalización de loudness; el ratio 2.5× sobre el noise floor adaptativo es suficiente para alinear cues. Si en el futuro hace falta más precisión (idiomas tonales, background music intensa), añadir Silero detrás de la misma interfaz `tightenToSpeech` es trivial.
 
 ---
 
@@ -592,9 +609,49 @@ async function translate(text: string, source: string, target: string) {
 
 ### 9.4 TTS
 
-Default: `SpeechSynthesisUtterance` (gratis, offline en macOS/Windows con voces del sistema).
+Cadena de fallback real (`src/background/tts.ts`):
 
-Si el usuario configura una clave premium (ElevenLabs / Google TTS), usar esa.
+1. **`chrome.tts.speak()`** — usa las voces del sistema, sin permiso adicional. Es la opción más rápida y de mejor calidad en macOS/Windows.
+2. Si `chrome.tts` no está disponible (no existe la API o falla por idioma sin voz), se pasa por mensaje `OFFSCREEN_TTS_SPEAK` al offscreen, que ejecuta `SpeechSynthesisUtterance` con la voz mejor matched para el BCP-47 solicitado (`src/offscreen/tts-fallback.ts::speakViaSpeechSynthesis`).
+3. Si el usuario configura una clave premium (ElevenLabs / Google TTS), iría aquí como prioridad 0 — no implementado en esta fase para no añadir dependencias.
+
+El offscreen mantiene una promesa pendiente por petición y resuelve en `utterance.onend` / `onerror`. Cualquier petición pendiente se cancela en `stopCapture()` (botón Stop del popup).
+
+### 9.5 ASR on-device — Whisper.cpp WASM
+
+Implementado en `src/offscreen/whisper-asr.ts` como **scaffolding opt-in** (no se descarga modelo ni glue hasta que el usuario active "ASR on-device" en Settings y se invoque `TRANSCRIBE_AUDIO_CLIP`).
+
+Arquitectura:
+
+```
+service-worker          offscreen document          CDN / Cache Storage
+─────────────────       ──────────────────          ───────────────────
+TRANSCRIBE_AUDIO_CLIP → OFFSCREEN_TRANSCRIBE_CLIP →  whisper.cpp glue   (jsdelivr, pinned tag)
+                                  │                  ggml-tiny.en.bin   (HuggingFace)
+                                  ▼
+                              cache.add()  →        Cache Storage `kivara-whisper-v1`
+                                  │                  (sobrevive a recargas, no a uninstall)
+                                  ▼
+                              transcribePcm(samples,sampleRate) ──► texto + segments
+```
+
+URLs por defecto (override-able desde `AsrSettings.glueUrl` / `modelUrl`):
+
+| Recurso | URL |
+|---|---|
+| Glue JS | `https://cdn.jsdelivr.net/gh/ggerganov/whisper.cpp@1.5.4/examples/whisper.wasm/libmain.worker.js` |
+| Modelo `tiny.en` (~75 MB) | `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.en.bin` |
+
+Flujo:
+
+1. `fetchModel()` busca el binario en `caches.open('kivara-whisper-v1')`. Si no está, hace `fetch` con `credentials: 'omit'` y lo guarda con `cache.put`. La primera descarga puede tomar 1-2 minutos en redes lentas.
+2. `loadModule()` hace `import(glueUrl)` dinámico — el WASM glue es un módulo ES que expone `Module.init({ wasmBinary, modelData })`.
+3. `transcribePcm(samples, sampleRate, language)` empaqueta el PCM Float32 en el formato esperado por Whisper.cpp (32-bit IEEE 754, mono), llama al binding y devuelve `{ ok: true, text, segments[], language }`.
+4. `unloadWhisper()` libera el módulo en `stopCapture()` para no retener ~80 MB de RAM cuando el usuario no está usando ASR.
+
+**Errores transitorios** (red, timeout descarga del modelo) devuelven `{ ok: false, transient: true }` para que el caller pueda reintentar sin invalidar la config.
+
+**Por qué no `transformers.js`:** la librería en sí pesa ~2 MB minified y añade una dependencia grande. El glue oficial de `whisper.cpp` es de ~150 kB y está específicamente optimizado para WASM en navegador. Lo único que perdemos es el high-level API; lo añadimos a mano.
 
 ---
 
@@ -891,6 +948,39 @@ export default defineConfig({
 - Beta cerrada (50 usuarios).
 - Web Store listings.
 - Landing en kivara.app/lingo.
+
+---
+
+## 19.1 Estado de Fase 3 (post-MVP de la AI anterior)
+
+La AI anterior dejó cuatro entregas diferidas. Estado actualizado:
+
+| Entrega diferida | Estado | Archivos |
+|---|---|---|
+| **Whisper.cpp WASM completo** | ✅ Wired (scaffolding opt-in, CDN-hosted, IndexedDB cache) | `src/offscreen/whisper-asr.ts`, `src/background/audio-capture-manager.ts::transcribeAudioClip`, `src/background/service-worker.ts::TRANSCRIBE_AUDIO_CLIP` |
+| **VAD real** | ✅ Implementado (RMS + noise floor adaptativo, hand-tuned) | `src/offscreen/vad.ts`, integrado en `audio-processor.ts::extractClip` |
+| **Conversión a MP3** | ⚠️ Sustituido por **WAV PCM 16 kHz mono** (sin nuevas deps) | `src/offscreen/audio-encoder.ts` |
+| **Fallback TTS por SpeechSynthesis** | ✅ Implementado (chrome.tts → offscreen SpeechSynthesis) | `src/offscreen/tts-fallback.ts`, `src/background/tts.ts::speak` |
+
+**Sobre la sustitución MP3 → WAV:** la decisión de no introducir `lamejs` (~75 kB minified) viene del requisito "sin dependencias nuevas". WAV PCM 16 kHz mono:
+
+- Es lo que Whisper espera — evita una doble conversión.
+- AnkiConnect acepta `wav` igual que `mp3` (`storeMediaFile` no impone formato).
+- 32 kB/segundo · 3s típicos por cue = ~96 kB por tarjeta. Para una colección de 5000 tarjetas, ~480 MB — aceptable.
+- Si el usuario necesita MP3 más adelante, basta con añadir `lamejs` y un `encodeMp3Mono` al lado de `encodeWavMono` con la misma firma.
+
+**Cambios estructurales que habilitan la Fase 3:**
+
+- `offscreen/audio-processor.ts` reescrito para multiplexar tres consumidores del offscreen document: rolling-buffer (USER_MEDIA), TTS playback (AUDIO_PLAYBACK), ASR (compute). Refcount en `audio-capture-manager.ts` para no cerrar el offscreen mientras una transcripción sigue corriendo.
+- Nueva ruta `TRANSCRIBE_AUDIO_CLIP` (content/popup → SW → offscreen) en `messages.ts` + `protocol.d.ts` + service worker handler.
+- `capture-orchestrator.ts` ahora respeta `captureSettings.preRoll`, `postRoll` y `endDetect` (`vad` | `cue`) en todas las invocaciones, incluyendo el reintento de notas pendientes.
+- `extForMime` actualizado para devolver `wav` cuando el offscreen entrega audio en ese formato.
+
+**Pendiente para fases futuras:**
+
+- Modelos Whisper más grandes (`base`, `small`) — requeriría UI de progreso de descarga (los `tiny` se bajan en silencio).
+- Tono / pitch shifting del TTS premium (no relevante para la cadena chrome.tts → SpeechSynthesis actual).
+- Generación de MP3 si el usuario lo activa explícitamente (decisión pendiente vs mantener el "sin dependencias nuevas").
 
 ---
 

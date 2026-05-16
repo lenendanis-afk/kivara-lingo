@@ -29,8 +29,8 @@ export function SettingsTab() {
   const setHideShadows = (v: boolean) => setCleanup({ ...cleanup, hideShadows: v });
 
   return (
-    <div className="flex flex-col h-full bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 overflow-y-auto">
-      <div className="p-3 space-y-3">
+    <div className="h-full min-h-0 overflow-y-auto bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100">
+      <div className="p-3 pb-6 space-y-3">
 
         {/* Captura */}
         <Section

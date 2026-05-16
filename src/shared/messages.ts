@@ -25,6 +25,8 @@ export const MSG = {
   REQUEST_AUDIO_SLICE: 'REQUEST_AUDIO_SLICE',
   /** content → background: extract clip for active cue (ms-relative to recording start) */
   EXTRACT_AUDIO_CLIP: 'EXTRACT_AUDIO_CLIP',
+  /** content → background: transcribe a clip with the on-device Whisper model */
+  TRANSCRIBE_AUDIO_CLIP: 'TRANSCRIBE_AUDIO_CLIP',
   /** popup/options → background: get audio capture status */
   AUDIO_CAPTURE_STATUS: 'AUDIO_CAPTURE_STATUS',
   /** any → background: translate a single token using the configured provider */

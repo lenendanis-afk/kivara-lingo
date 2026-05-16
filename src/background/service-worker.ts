@@ -3,6 +3,7 @@
 import { onMessage } from 'webext-bridge/background';
 import type {
   AnkiMapping,
+  CaptureSettings,
   CreateCardRequest,
   CreateCardResponse,
   AnkiPingResponse,
@@ -10,6 +11,8 @@ import type {
   AnkiFieldsResponse,
   AudioCaptureStatus,
   AudioClipResponse,
+  TranscribeRequest,
+  TranscribeResponse,
   TranslateRequest,
   TranslateResponse,
   TtsSpeakRequest,
@@ -17,11 +20,12 @@ import type {
 } from '../shared/types';
 import { ankiConnect } from './anki-connect';
 import { createCardFromRequest, retryPendingNotes } from './capture-orchestrator';
-import { DEFAULT_ANKI_MAPPING } from '../shared/store';
+import { DEFAULT_ANKI_MAPPING, DEFAULT_CAPTURE } from '../shared/store';
 import {
   startAudioCapture,
   stopAudioCapture,
   extractAudioClip,
+  transcribeAudioClip,
   getAudioCaptureStatus,
 } from './audio-capture-manager';
 import { translateText } from './translate';
@@ -48,18 +52,25 @@ async function loadMapping(): Promise<AnkiMapping> {
   return DEFAULT_ANKI_MAPPING;
 }
 
-async function loadCaptureBufferSec(): Promise<number> {
+async function loadCaptureSettings(): Promise<CaptureSettings> {
   try {
     const raw = await chrome.storage.sync.get(STORE_KEY);
     const value = raw[STORE_KEY];
-    if (typeof value !== 'string') return 30;
+    if (typeof value !== 'string') return DEFAULT_CAPTURE;
     const parsed = JSON.parse(value);
     const cap = parsed?.state?.capture ?? parsed?.capture;
-    if (cap && typeof cap.bufferSize === 'number') return Math.max(5, cap.bufferSize);
+    if (cap && typeof cap === 'object') {
+      return { ...DEFAULT_CAPTURE, ...cap };
+    }
   } catch {
     // ignore
   }
-  return 30;
+  return DEFAULT_CAPTURE;
+}
+
+async function loadCaptureBufferSec(): Promise<number> {
+  const cap = await loadCaptureSettings();
+  return Math.max(5, cap.bufferSize ?? DEFAULT_CAPTURE.bufferSize);
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -69,8 +80,8 @@ function asJson<T>(value: T): any {
 
 onMessage('CREATE_CARD', async ({ data }) => {
   const request = data as unknown as CreateCardRequest;
-  const mapping = await loadMapping();
-  const response: CreateCardResponse = await createCardFromRequest(request, mapping);
+  const [mapping, capture] = await Promise.all([loadMapping(), loadCaptureSettings()]);
+  const response: CreateCardResponse = await createCardFromRequest(request, mapping, capture);
   if (response.ok) {
     console.log('[Kivara Lingo] note created:', response.noteId);
   } else {
@@ -172,8 +183,44 @@ onMessage('EXTRACT_AUDIO_CLIP', async ({ data }) => {
   if (typeof startMs !== 'number' || typeof endMs !== 'number') {
     return asJson({ ok: false, error: 'startMs/endMs required' } satisfies AudioClipResponse);
   }
-  const result = await extractAudioClip(startMs, endMs);
+  const capture = await loadCaptureSettings();
+  const result = await extractAudioClip(startMs, endMs, {
+    format: 'wav',
+    useVad: capture.endDetect === 'vad',
+    preRollMs: capture.preRoll,
+    postRollMs: capture.postRoll,
+  });
   return asJson(result);
+});
+
+onMessage('TRANSCRIBE_AUDIO_CLIP', async ({ data }) => {
+  const req = (data as TranscribeRequest) ?? { startMs: 0, endMs: 0 };
+  if (typeof req.startMs !== 'number' || typeof req.endMs !== 'number') {
+    const err: TranscribeResponse = { ok: false, error: 'startMs/endMs required' };
+    return asJson(err);
+  }
+  const capture = await loadCaptureSettings();
+  const result = await transcribeAudioClip(req.startMs, req.endMs, {
+    useVad: req.useVad ?? capture.endDetect === 'vad',
+    preRollMs: req.preRollMs ?? capture.preRoll,
+    postRollMs: req.postRollMs ?? capture.postRoll,
+    language: req.language,
+    whisperConfig: req.whisperConfig,
+  });
+  const response: TranscribeResponse = result.transcription.ok
+    ? {
+        ok: true,
+        text: result.transcription.text,
+        segments: result.transcription.segments,
+        language: result.transcription.language,
+        clip: result.clip,
+      }
+    : {
+        ok: false,
+        error: result.transcription.error,
+        transient: result.transcription.transient,
+      };
+  return asJson(response);
 });
 
 onMessage('TRANSLATE', async ({ data }) => {
@@ -227,8 +274,8 @@ chrome.runtime.onStartup.addListener(async () => {
 chrome.alarms.onAlarm.addListener(async (alarm) => {
   if (alarm.name !== RETRY_ALARM) return;
   try {
-    const mapping = await loadMapping();
-    const { retried, succeeded } = await retryPendingNotes(mapping);
+    const [mapping, capture] = await Promise.all([loadMapping(), loadCaptureSettings()]);
+    const { retried, succeeded } = await retryPendingNotes(mapping, capture);
     if (retried > 0) {
       console.log('[Kivara Lingo] retry pending notes', { retried, succeeded });
     }

@@ -4,9 +4,9 @@
  * Offscreen audio processor.
  *
  * Lifecycle:
- *  1. Service worker calls `chrome.offscreen.createDocument` with reason
- *     `USER_MEDIA` and gives this document a `streamId` from
- *     `chrome.tabCapture.getMediaStreamId`.
+ *  1. Service worker calls `chrome.offscreen.createDocument` with reasons
+ *     `USER_MEDIA` + `AUDIO_PLAYBACK` and gives this document a `streamId`
+ *     from `chrome.tabCapture.getMediaStreamId`.
  *  2. We open the tab media stream via `navigator.mediaDevices.getUserMedia`
  *     using the legacy `chromeMediaSource` constraints — those still work in
  *     MV3 offscreen documents.
@@ -14,12 +14,37 @@
  *     user keeps hearing the tab.
  *  4. `MediaRecorder` records continuously into a rolling buffer of N seconds
  *     worth of chunks (timeslice 250 ms).
- *  5. When the background asks `EXTRACT_AUDIO_CLIP`, we splice the relevant
- *     chunks and ship them back as a base64-encoded WebM/Opus blob.
+ *  5. When the background asks `OFFSCREEN_EXTRACT_AUDIO_CLIP`, we splice the
+ *     relevant chunks, optionally trim to detected speech (RMS-based VAD),
+ *     transcode to 16 kHz mono WAV (Anki-friendly and Whisper-ready) and
+ *     ship a base64 data URL back.
+ *  6. `OFFSCREEN_TRANSCRIBE_CLIP` runs the same pipeline but additionally
+ *     hands the PCM buffer to Whisper.cpp WASM and returns the recognised
+ *     text — used when the platform doesn't expose subtitles.
+ *  7. `OFFSCREEN_TTS_SPEAK` delegates to `speechSynthesis` (Web Speech API)
+ *     — the fallback for browsers / platforms where `chrome.tts` fails.
  *
- * The whole document lives only while audio capture is active. The service
- * worker tears it down with `chrome.offscreen.closeDocument()` on stop.
+ * The whole document lives only while audio capture is active OR while a
+ * TTS/transcription request is in flight. The service worker tears it down
+ * with `chrome.offscreen.closeDocument()` via the refcount in
+ * `audio-capture-manager.ts`.
  */
+
+import {
+  convertBlobToWav,
+  blobToDataUrl,
+  encodeWavMono,
+  trimPcm,
+} from './audio-encoder';
+import { tightenToSpeech, type VadOptions } from './vad';
+import { speakViaSpeechSynthesis } from './tts-fallback';
+import {
+  setWhisperConfig,
+  transcribePcm,
+  unloadWhisper,
+  type WhisperConfig,
+  type WhisperResult,
+} from './whisper-asr';
 
 interface OffscreenMessage {
   type: string;
@@ -28,6 +53,18 @@ interface OffscreenMessage {
   endMs?: number;
   bufferSizeSec?: number;
   requestId?: string;
+  /** TTS fields */
+  text?: string;
+  lang?: string;
+  rate?: number;
+  pitch?: number;
+  /** Whisper / VAD fields */
+  format?: 'wav' | 'webm';
+  useVad?: boolean;
+  preRollMs?: number;
+  postRollMs?: number;
+  language?: string;
+  whisperConfig?: Partial<WhisperConfig>;
 }
 
 interface ChunkRecord {
@@ -39,6 +76,7 @@ interface ChunkRecord {
 }
 
 const TIMESLICE_MS = 250;
+const TARGET_SAMPLE_RATE = 16_000;
 
 let mediaRecorder: MediaRecorder | null = null;
 let stream: MediaStream | null = null;
@@ -67,14 +105,19 @@ function pickMimeType(): string {
   return '';
 }
 
-async function startCapture(streamId: string, bufferSec: number): Promise<{ ok: boolean; mimeType?: string; error?: string }> {
+async function startCapture(
+  streamId: string,
+  bufferSec: number,
+): Promise<{ ok: boolean; mimeType?: string; error?: string }> {
   if (mediaRecorder) await stopCapture();
   bufferSizeMs = Math.max(5, bufferSec) * 1000;
 
   try {
-    stream = await (navigator.mediaDevices as MediaDevices & {
-      getUserMedia(constraints: unknown): Promise<MediaStream>;
-    }).getUserMedia({
+    stream = await (
+      navigator.mediaDevices as MediaDevices & {
+        getUserMedia(constraints: unknown): Promise<MediaStream>;
+      }
+    ).getUserMedia({
       audio: {
         mandatory: { chromeMediaSource: 'tab', chromeMediaSourceId: streamId },
       },
@@ -156,24 +199,14 @@ async function stopCapture(): Promise<void> {
   chunks = [];
   recordedMime = '';
   recordingStartedAt = 0;
+  // Free the (potentially large) Whisper model when capture stops — we'll
+  // reload it on the next request if needed.
+  unloadWhisper();
 }
 
-async function extractClip(startMs: number, endMs: number): Promise<{
-  ok: boolean;
-  dataUrl?: string;
-  mimeType?: string;
-  durationMs?: number;
-  error?: string;
-}> {
-  if (!chunks.length) return { ok: false, error: 'No audio buffered yet' };
-  const minStart = Math.min(...chunks.map((c) => c.recordedAt));
-  const maxEnd = Math.max(...chunks.map((c) => c.recordedAt + c.durationMs));
-
-  const sliceStart = Math.max(startMs, minStart);
-  const sliceEnd = Math.min(endMs, maxEnd);
-  if (sliceEnd <= sliceStart) {
-    return { ok: false, error: 'Requested clip is outside the rolling buffer window' };
-  }
+/** Build a self-contained WebM blob covering [sliceStart, sliceEnd]. */
+function buildWebmBlob(sliceStart: number, sliceEnd: number): Blob | null {
+  if (!chunks.length) return null;
 
   // MediaRecorder writes a self-contained stream — the first chunk includes
   // the container header. To produce a playable file we must always include
@@ -188,26 +221,144 @@ async function extractClip(startMs: number, endMs: number): Promise<{
     .map((c) => c.blob);
 
   const parts = overlapping.includes(header) ? overlapping : [header, ...overlapping];
-  const blob = new Blob(parts, { type: recordedMime || 'audio/webm' });
-  const dataUrl = await blobToDataUrl(blob);
-  return {
-    ok: true,
-    dataUrl,
-    mimeType: recordedMime || 'audio/webm',
-    durationMs: sliceEnd - sliceStart,
-  };
+  return new Blob(parts, { type: recordedMime || 'audio/webm' });
 }
 
-function blobToDataUrl(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = () =>
-      typeof reader.result === 'string'
-        ? resolve(reader.result)
-        : reject(new Error('Failed to encode audio blob'));
-    reader.onerror = () => reject(new Error('FileReader error'));
-    reader.readAsDataURL(blob);
-  });
+interface ExtractOptions {
+  startMs: number;
+  endMs: number;
+  format?: 'wav' | 'webm';
+  useVad?: boolean;
+  preRollMs?: number;
+  postRollMs?: number;
+}
+
+interface ExtractedClip {
+  ok: boolean;
+  dataUrl?: string;
+  mimeType?: string;
+  durationMs?: number;
+  /** When `useVad` was true, the actual speech window (relative to clip start) */
+  speechStartMs?: number;
+  speechEndMs?: number;
+  /** PCM buffer (only when format = 'wav') for downstream Whisper */
+  pcm?: Float32Array;
+  pcmSampleRate?: number;
+  error?: string;
+}
+
+async function extractClip(opts: ExtractOptions): Promise<ExtractedClip> {
+  if (!chunks.length) return { ok: false, error: 'No audio buffered yet' };
+
+  const minStart = Math.min(...chunks.map((c) => c.recordedAt));
+  const maxEnd = Math.max(...chunks.map((c) => c.recordedAt + c.durationMs));
+  const sliceStart = Math.max(opts.startMs, minStart);
+  const sliceEnd = Math.min(opts.endMs, maxEnd);
+  if (sliceEnd <= sliceStart) {
+    return { ok: false, error: 'Requested clip is outside the rolling buffer window' };
+  }
+
+  const webmBlob = buildWebmBlob(sliceStart, sliceEnd);
+  if (!webmBlob) return { ok: false, error: 'Could not assemble audio chunks' };
+
+  // Cheap path: caller just wants the raw WebM/Opus clip (no decoding).
+  if (opts.format === 'webm') {
+    const dataUrl = await blobToDataUrl(webmBlob);
+    return {
+      ok: true,
+      dataUrl,
+      mimeType: recordedMime || 'audio/webm',
+      durationMs: sliceEnd - sliceStart,
+    };
+  }
+
+  // WAV path: decode → optional VAD trim → encode WAV. The full-clip PCM
+  // is also returned so the caller can run Whisper without decoding twice.
+  try {
+    const decoded = await convertBlobToWav(webmBlob, { targetSampleRate: TARGET_SAMPLE_RATE });
+
+    // The decoded buffer is anchored at the start of the FIRST chunk in
+    // the rolling buffer (because we always prepend the header). Translate
+    // the requested window into "clip-local ms" so VAD only looks at the
+    // relevant region.
+    const clipLocalStart = Math.max(0, sliceStart - chunks[0].recordedAt);
+    const clipLocalEnd = Math.min(decoded.durationMs, sliceEnd - chunks[0].recordedAt);
+
+    let speechStartMs = clipLocalStart;
+    let speechEndMs = clipLocalEnd;
+    let usedVad = false;
+    if (opts.useVad) {
+      const vadOpts: VadOptions = {
+        preRollMs: opts.preRollMs ?? 120,
+        postRollMs: opts.postRollMs ?? 180,
+      };
+      const tightened = tightenToSpeech(
+        decoded.samples,
+        TARGET_SAMPLE_RATE,
+        clipLocalStart,
+        clipLocalEnd,
+        vadOpts,
+      );
+      speechStartMs = tightened.startMs;
+      speechEndMs = tightened.endMs;
+      usedVad = tightened.usedVad;
+    }
+
+    const finalPcm = trimPcm(
+      decoded.samples,
+      TARGET_SAMPLE_RATE,
+      speechStartMs,
+      speechEndMs,
+    );
+    const wavBlob = encodeWavMono(finalPcm, TARGET_SAMPLE_RATE);
+    const dataUrl = await blobToDataUrl(wavBlob);
+
+    return {
+      ok: true,
+      dataUrl,
+      mimeType: 'audio/wav',
+      durationMs: Math.round((finalPcm.length / TARGET_SAMPLE_RATE) * 1000),
+      speechStartMs: usedVad ? speechStartMs : undefined,
+      speechEndMs: usedVad ? speechEndMs : undefined,
+      pcm: finalPcm,
+      pcmSampleRate: TARGET_SAMPLE_RATE,
+    };
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : 'wav decode/encode failed';
+    console.warn('[Kivara Lingo] WAV conversion failed; falling back to webm', err);
+    // Fall back to the original webm output rather than erroring out.
+    const dataUrl = await blobToDataUrl(webmBlob);
+    return {
+      ok: true,
+      dataUrl,
+      mimeType: recordedMime || 'audio/webm',
+      durationMs: sliceEnd - sliceStart,
+      error: reason,
+    };
+  }
+}
+
+async function transcribeClip(
+  opts: ExtractOptions & { language?: string; whisperConfig?: Partial<WhisperConfig> },
+): Promise<{ clip: ExtractedClip; transcription: WhisperResult }> {
+  if (opts.whisperConfig) setWhisperConfig(opts.whisperConfig);
+
+  const clip = await extractClip({ ...opts, format: 'wav', useVad: opts.useVad ?? true });
+  if (!clip.ok || !clip.pcm) {
+    return {
+      clip,
+      transcription: {
+        ok: false,
+        error: clip.error ?? 'No PCM available for transcription',
+      },
+    };
+  }
+  const transcription = await transcribePcm(
+    clip.pcm,
+    clip.pcmSampleRate ?? TARGET_SAMPLE_RATE,
+    opts.language ?? 'auto',
+  );
+  return { clip, transcription };
 }
 
 chrome.runtime.onMessage.addListener((rawMsg: unknown, _sender, sendResponse) => {
@@ -226,8 +377,58 @@ chrome.runtime.onMessage.addListener((rawMsg: unknown, _sender, sendResponse) =>
     return true;
   }
 
-  if (msg.type === 'OFFSCREEN_EXTRACT_AUDIO_CLIP' && typeof msg.startMs === 'number' && typeof msg.endMs === 'number') {
-    void extractClip(msg.startMs, msg.endMs).then((result) => sendResponse(result));
+  if (
+    msg.type === 'OFFSCREEN_EXTRACT_AUDIO_CLIP' &&
+    typeof msg.startMs === 'number' &&
+    typeof msg.endMs === 'number'
+  ) {
+    void extractClip({
+      startMs: msg.startMs,
+      endMs: msg.endMs,
+      format: msg.format ?? 'wav',
+      useVad: msg.useVad ?? true,
+      preRollMs: msg.preRollMs,
+      postRollMs: msg.postRollMs,
+    }).then((result) => {
+      // Strip the PCM buffer before responding — it's not transferable via
+      // chrome.runtime.sendMessage anyway and would just bloat the IPC.
+      const { pcm: _pcm, pcmSampleRate: _rate, ...response } = result;
+      void _pcm;
+      void _rate;
+      sendResponse(response);
+    });
+    return true;
+  }
+
+  if (
+    msg.type === 'OFFSCREEN_TRANSCRIBE_CLIP' &&
+    typeof msg.startMs === 'number' &&
+    typeof msg.endMs === 'number'
+  ) {
+    void transcribeClip({
+      startMs: msg.startMs,
+      endMs: msg.endMs,
+      useVad: msg.useVad ?? true,
+      preRollMs: msg.preRollMs,
+      postRollMs: msg.postRollMs,
+      language: msg.language,
+      whisperConfig: msg.whisperConfig,
+    }).then(({ clip, transcription }) => {
+      const { pcm: _pcm, pcmSampleRate: _rate, ...clipOut } = clip;
+      void _pcm;
+      void _rate;
+      sendResponse({ clip: clipOut, transcription });
+    });
+    return true;
+  }
+
+  if (msg.type === 'OFFSCREEN_TTS_SPEAK' && typeof msg.text === 'string') {
+    void speakViaSpeechSynthesis({
+      text: msg.text,
+      lang: msg.lang ?? 'en',
+      rate: msg.rate,
+      pitch: msg.pitch,
+    }).then((result) => sendResponse(result));
     return true;
   }
 

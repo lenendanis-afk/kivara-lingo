@@ -119,9 +119,54 @@ export interface TranslateSettings {
 export interface AsrSettings {
   /** Whether the user opted-in to on-device transcription as fallback */
   enabled: boolean;
-  /** 'tiny' is ~75MB, 'small' ~466MB. Reserved for Phase 3 wiring. */
+  /** 'tiny' is ~75MB, 'small' ~466MB. Wired via Whisper.cpp WASM. */
   model: 'tiny' | 'base' | 'small';
+  /**
+   * Optional override for the Whisper.cpp glue script URL. Defaults to a
+   * pinned jsdelivr CDN URL inside `whisper-asr.ts`. Surfaced here so the
+   * user can point at a self-hosted build (e.g. for offline environments).
+   */
+  glueUrl?: string;
+  /**
+   * Optional override for the ggml model URL. Defaults to the HuggingFace
+   * mirror of `ggml-tiny.en.bin` in `whisper-asr.ts`.
+   */
+  modelUrl?: string;
 }
+
+export interface TranscribeRequest {
+  startMs: number;
+  endMs: number;
+  /** BCP-47 language tag; 'auto' lets Whisper detect */
+  language?: string;
+  /** Trim to detected speech via RMS-based VAD. Default true. */
+  useVad?: boolean;
+  preRollMs?: number;
+  postRollMs?: number;
+  /** Override the Whisper.cpp loader at runtime */
+  whisperConfig?: {
+    glueUrl?: string;
+    modelUrl?: string;
+    cacheName?: string;
+  };
+}
+
+export interface TranscribeSegment {
+  startMs: number;
+  endMs: number;
+  text: string;
+}
+
+export type TranscribeResponse =
+  | {
+      ok: true;
+      text: string;
+      segments: TranscribeSegment[];
+      language?: string;
+      /** Clip metadata so the caller can attach it to a card. */
+      clip: AudioClipResponse;
+    }
+  | { ok: false; error: string; transient?: boolean };
 
 export interface OnboardingState {
   /** Whether the user has completed initial setup */

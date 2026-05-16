@@ -1,22 +1,33 @@
 /// <reference types="chrome" />
 
 /**
- * Service-worker side of audio capture.
+ * Service-worker side of audio capture + offscreen-document multiplexing.
  *
  * Responsibilities:
- *  - Create / close the offscreen document.
+ *  - Create / close the offscreen document and keep it alive while at least
+ *    one consumer holds a refcount (capture, TTS, ASR…).
  *  - Resolve a `streamId` from `chrome.tabCapture.getMediaStreamId` and ship
  *    it to the offscreen worker.
- *  - Proxy `EXTRACT_AUDIO_CLIP` requests from content / orchestrator into
- *    the offscreen worker and return the produced clip as a data URL.
+ *  - Proxy `EXTRACT_AUDIO_CLIP` and `TRANSCRIBE_AUDIO_CLIP` requests from
+ *    content / orchestrator into the offscreen worker.
+ *  - Proxy `OFFSCREEN_TTS_SPEAK` so the background's `tts.ts` can fall back
+ *    to `speechSynthesis` when `chrome.tts` is unavailable.
  */
-import type { AudioCaptureStatus, AudioClipResponse } from '../shared/types';
+
+import type {
+  AudioCaptureStatus,
+  AudioClipResponse,
+  TtsResponse,
+} from '../shared/types';
 
 const OFFSCREEN_URL = 'src/offscreen/index.html';
 
 let activeTabId: number | null = null;
 let activeMimeType: string | undefined;
 let lastError: string | undefined;
+
+/** Refcount for one-shot consumers (TTS / ASR) that need a brief lifetime. */
+let oneShotRefs = 0;
 
 async function hasOffscreenDocument(): Promise<boolean> {
   // chrome.offscreen.hasDocument was renamed; both exist in different versions
@@ -46,19 +57,30 @@ async function hasOffscreenDocument(): Promise<boolean> {
 
 async function ensureOffscreen(): Promise<void> {
   if (await hasOffscreenDocument()) return;
+  // We list every reason we use across the whole app so a single offscreen
+  // document can serve capture (USER_MEDIA), TTS fallback (AUDIO_PLAYBACK)
+  // and Whisper.cpp WASM transcription (WORKERS-friendly compute).
+  const reasons = [
+    'USER_MEDIA',
+    'AUDIO_PLAYBACK',
+    'WORKERS',
+  ] as chrome.offscreen.Reason[];
   await chrome.offscreen.createDocument({
     url: OFFSCREEN_URL,
-    reasons: ['USER_MEDIA' as chrome.offscreen.Reason],
-    justification: 'Recording tab audio so it can be attached to Anki cards.',
+    reasons,
+    justification:
+      'Tab audio capture, on-device speech synthesis (TTS fallback) and Whisper.cpp transcription for language learning cards.',
   });
 }
 
-async function closeOffscreen(): Promise<void> {
+async function closeOffscreenIfIdle(): Promise<void> {
+  if (activeTabId != null) return; // capture still active
+  if (oneShotRefs > 0) return; // another one-shot in flight
   if (!(await hasOffscreenDocument())) return;
   try {
     await chrome.offscreen.closeDocument();
   } catch (err) {
-    console.warn('[Kivara Lingo] closeOffscreen failed', err);
+    console.warn('[Kivara Lingo] closeOffscreenIfIdle failed', err);
   }
 }
 
@@ -98,6 +120,18 @@ function sendToOffscreen<T = unknown>(message: Record<string, unknown>): Promise
   });
 }
 
+/** Wrap a one-shot offscreen operation in refcounting + cleanup. */
+async function withOffscreen<T>(op: () => Promise<T>): Promise<T> {
+  oneShotRefs += 1;
+  try {
+    await ensureOffscreen();
+    return await op();
+  } finally {
+    oneShotRefs = Math.max(0, oneShotRefs - 1);
+    void closeOffscreenIfIdle();
+  }
+}
+
 export async function startAudioCapture(
   tabId: number,
   bufferSizeSec: number,
@@ -124,7 +158,7 @@ export async function startAudioCapture(
     activeTabId = null;
     activeMimeType = undefined;
     // Best effort: shut the offscreen doc back down if we failed to start.
-    void closeOffscreen();
+    void closeOffscreenIfIdle();
     return { ok: false, error: reason };
   }
 }
@@ -137,15 +171,27 @@ export async function stopAudioCapture(): Promise<void> {
   } catch (err) {
     console.warn('[Kivara Lingo] failed to stop offscreen', err);
   } finally {
-    await closeOffscreen();
     activeTabId = null;
     activeMimeType = undefined;
+    await closeOffscreenIfIdle();
   }
+}
+
+export interface ExtractAudioClipOptions {
+  /** Trim to detected speech (RMS-based VAD). Default `true`. */
+  useVad?: boolean;
+  /** ms kept before detected speech */
+  preRollMs?: number;
+  /** ms kept after detected speech */
+  postRollMs?: number;
+  /** 'wav' decodes + transcodes to 16 kHz mono WAV; 'webm' returns the raw recorder output. */
+  format?: 'wav' | 'webm';
 }
 
 export async function extractAudioClip(
   startMs: number,
   endMs: number,
+  options: ExtractAudioClipOptions = {},
 ): Promise<AudioClipResponse> {
   if (activeTabId == null) {
     return { ok: false, error: 'Audio capture is not active for this tab.' };
@@ -155,12 +201,91 @@ export async function extractAudioClip(
       type: 'OFFSCREEN_EXTRACT_AUDIO_CLIP',
       startMs,
       endMs,
+      format: options.format ?? 'wav',
+      useVad: options.useVad ?? true,
+      preRollMs: options.preRollMs,
+      postRollMs: options.postRollMs,
     });
     return result;
   } catch (err) {
     const reason = err instanceof Error ? err.message : 'unknown';
     return { ok: false, error: reason };
   }
+}
+
+export interface TranscribeClipOptions extends ExtractAudioClipOptions {
+  /** BCP-47 language code (or 'auto' to let Whisper detect) */
+  language?: string;
+  /** Override the Whisper glue / model URLs at runtime */
+  whisperConfig?: {
+    glueUrl?: string;
+    modelUrl?: string;
+    cacheName?: string;
+  };
+}
+
+export interface TranscribeClipResult {
+  clip: AudioClipResponse;
+  transcription:
+    | {
+        ok: true;
+        text: string;
+        segments: Array<{ startMs: number; endMs: number; text: string }>;
+        language?: string;
+      }
+    | { ok: false; error: string; transient?: boolean };
+}
+
+export async function transcribeAudioClip(
+  startMs: number,
+  endMs: number,
+  options: TranscribeClipOptions = {},
+): Promise<TranscribeClipResult> {
+  if (activeTabId == null) {
+    return {
+      clip: { ok: false, error: 'Audio capture is not active for this tab.' },
+      transcription: { ok: false, error: 'Audio capture is not active for this tab.' },
+    };
+  }
+  try {
+    const result = await sendToOffscreen<TranscribeClipResult>({
+      type: 'OFFSCREEN_TRANSCRIBE_CLIP',
+      startMs,
+      endMs,
+      useVad: options.useVad ?? true,
+      preRollMs: options.preRollMs,
+      postRollMs: options.postRollMs,
+      language: options.language,
+      whisperConfig: options.whisperConfig,
+    });
+    return result;
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : 'unknown';
+    return {
+      clip: { ok: false, error: reason },
+      transcription: { ok: false, error: reason },
+    };
+  }
+}
+
+/**
+ * Speak `text` via the offscreen document's `speechSynthesis` (Web Speech
+ * API). Used as a fallback when `chrome.tts` is unavailable / errors out.
+ */
+export async function speakViaOffscreen(text: string, lang: string): Promise<TtsResponse> {
+  return withOffscreen(async () => {
+    try {
+      const result = await sendToOffscreen<TtsResponse>({
+        type: 'OFFSCREEN_TTS_SPEAK',
+        text,
+        lang,
+      });
+      return result ?? { ok: false, error: 'no response from offscreen' };
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : 'offscreen TTS failed';
+      return { ok: false, error: reason };
+    }
+  });
 }
 
 export function getAudioCaptureStatus(): AudioCaptureStatus {

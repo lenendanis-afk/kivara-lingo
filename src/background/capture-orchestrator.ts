@@ -2,10 +2,12 @@
 
 import type {
   AnkiMapping,
+  CaptureSettings,
   CreateCardRequest,
   CreateCardResponse,
   FieldSource,
 } from '../shared/types';
+import { DEFAULT_CAPTURE } from '../shared/store';
 import { ankiConnect, dataUrlToBase64, type AnkiMedia } from './anki-connect';
 import { translateToken } from './translate';
 import { extractAudioClip, getAudioCaptureStatus } from './audio-capture-manager';
@@ -33,6 +35,7 @@ function safeFilename(base: string, ext: string): string {
 }
 
 function extForMime(mime: string): string {
+  if (/wav|wave/.test(mime)) return 'wav';
   if (/mp3|mpeg/.test(mime)) return 'mp3';
   if (/ogg/.test(mime)) return 'ogg';
   if (/mp4|m4a|aac/.test(mime)) return 'm4a';
@@ -66,6 +69,7 @@ function resolveField(field: string, source: FieldSource, ctx: ResolveContext): 
 
 async function resolveAudio(
   request: CreateCardRequest,
+  capture: CaptureSettings,
 ): Promise<{ dataUrl: string; mime: string } | null> {
   // Prefer the explicit audio attached by the caller (e.g. content script
   // already extracted via VAD).
@@ -85,16 +89,29 @@ async function resolveAudio(
   // visible, so the rolling buffer covers it.
   const now = Date.now();
   const duration = Math.max(500, request.cueEnd - request.cueStart);
-  const start = now - duration - 300; // pre-roll
-  const end = now + 200; // small slack so the chunk that contains the last spoken bit is included
-  const clip = await extractAudioClip(start, end);
+  const preRoll = Math.max(0, capture.preRoll ?? DEFAULT_CAPTURE.preRoll);
+  const postRoll = Math.max(0, capture.postRoll ?? DEFAULT_CAPTURE.postRoll);
+  const start = now - duration - preRoll;
+  const end = now + postRoll;
+
+  // VAD-on-extract trims the WebM/Opus chunk down to actual speech and
+  // re-encodes as 16 kHz mono WAV — Anki plays it, file size is small and
+  // the same PCM is what Whisper.cpp will consume in the ASR fallback path.
+  const useVad = capture.endDetect === 'vad';
+  const clip = await extractAudioClip(start, end, {
+    format: 'wav',
+    useVad,
+    preRollMs: preRoll,
+    postRollMs: postRoll,
+  });
   if (!clip.ok || !clip.dataUrl) return null;
-  return { dataUrl: clip.dataUrl, mime: clip.mimeType || 'audio/webm' };
+  return { dataUrl: clip.dataUrl, mime: clip.mimeType || 'audio/wav' };
 }
 
 export async function createCardFromRequest(
   request: CreateCardRequest,
   mapping: AnkiMapping,
+  capture: CaptureSettings = DEFAULT_CAPTURE,
 ): Promise<CreateCardResponse> {
   const warnings: string[] = [];
   const dictionaryHit = await translateToken(request.token, request.language ?? 'en');
@@ -140,7 +157,7 @@ export async function createCardFromRequest(
   const audios: AnkiMedia[] = [];
   const audioField = fieldMapping.find(([, s]) => s === 'tabCapture' || s === 'tts')?.[0];
   if (audioField) {
-    const resolved = await resolveAudio(request);
+    const resolved = await resolveAudio(request, capture);
     if (resolved) {
       const filename = safeFilename(request.token, extForMime(resolved.mime));
       try {
@@ -208,7 +225,10 @@ export async function createCardFromRequest(
 }
 
 /** Drain the pending queue. Called by `chrome.alarms`. */
-export async function retryPendingNotes(mapping: AnkiMapping): Promise<{ retried: number; succeeded: number }> {
+export async function retryPendingNotes(
+  mapping: AnkiMapping,
+  capture: CaptureSettings = DEFAULT_CAPTURE,
+): Promise<{ retried: number; succeeded: number }> {
   const db = getDB();
   const now = Date.now();
   let retried = 0;
@@ -222,7 +242,7 @@ export async function retryPendingNotes(mapping: AnkiMapping): Promise<{ retried
   for (const row of rows) {
     if (!row.id) continue;
     retried += 1;
-    const result = await createCardFromRequest(row.request, mapping);
+    const result = await createCardFromRequest(row.request, mapping, capture);
     if (result.ok) {
       try {
         await db.pending_notes.delete(row.id);

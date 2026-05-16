@@ -58,6 +58,7 @@ type ConnectionState = 'idle' | 'connecting' | 'connected' | 'error';
 export function CardsTab({ mapping, setMapping, mockData }: CardsTabProps) {
   const [conn, setConn] = useState<ConnectionState>('idle');
   const [previewSide, setPreviewSide] = useState<'front' | 'back'>('front');
+  const [previewOpen, setPreviewOpen] = useState(true);
   const [editingField, setEditingField] = useState<string | null>(null);
   const [setupOpen, setSetupOpen] = useState(false);
   const [decks, setDecks] = useState<string[]>([]);
@@ -136,8 +137,8 @@ export function CardsTab({ mapping, setMapping, mockData }: CardsTabProps) {
   const mappedCount = ankiFields.filter(f => mapping.fieldSources[f] && mapping.fieldSources[f] !== 'manual').length;
 
   return (
-    <div className="flex flex-col h-full bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100">
-      <div className="flex-1 overflow-y-auto p-3 space-y-3">
+    <div className="flex flex-col h-full min-h-0 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100">
+      <div className="flex-1 min-h-0 overflow-y-auto p-3 pb-4 space-y-3">
 
         {/* Conexión */}
         <Section
@@ -286,43 +287,81 @@ export function CardsTab({ mapping, setMapping, mockData }: CardsTabProps) {
         </Section>
       </div>
 
-      {/* Preview Anki — docked */}
-      <div className="bg-zinc-50 dark:bg-zinc-950 border-t border-zinc-200 dark:border-zinc-800 p-3 shrink-0">
-        <div className="flex items-center justify-between mb-2">
+      {/* Preview Anki — docked & collapsible.
+          `shrink-0` keeps it visible above the scroll area, but the user can
+          collapse it to free vertical space (especially in popup mode where
+          the panel is only 600px tall). */}
+      <div className="bg-zinc-50 dark:bg-zinc-950 border-t border-zinc-200 dark:border-zinc-800 shrink-0">
+        <button
+          onClick={() => setPreviewOpen((v) => !v)}
+          className="w-full flex items-center justify-between gap-2 px-3 py-2 hover:bg-zinc-100/60 dark:hover:bg-zinc-900/60 transition-colors"
+          title={previewOpen ? 'Ocultar preview' : 'Mostrar preview'}
+        >
           <span className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
             <Layers size={10} className="text-indigo-500" /> Preview
           </span>
-          <div className="flex bg-zinc-200/80 dark:bg-zinc-800/80 rounded-md p-0.5">
-            {(['front','back'] as const).map(side => (
-              <button
-                key={side}
-                onClick={() => setPreviewSide(side)}
-                className={`text-[9px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded transition-all ${previewSide === side ? 'bg-white dark:bg-zinc-700 text-indigo-600 dark:text-indigo-300 shadow-sm' : 'text-zinc-500 dark:text-zinc-400'}`}
+          <span className="flex items-center gap-1.5">
+            {previewOpen && (
+              <span
+                role="group"
+                onClick={(e) => e.stopPropagation()}
+                className="flex bg-zinc-200/80 dark:bg-zinc-800/80 rounded-md p-0.5"
               >
-                {side === 'front' ? 'Frente' : 'Reverso'}
+                {(['front', 'back'] as const).map((side) => (
+                  <span
+                    key={side}
+                    role="button"
+                    tabIndex={0}
+                    onClick={(e) => { e.stopPropagation(); setPreviewSide(side); }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setPreviewSide(side);
+                      }
+                    }}
+                    className={`text-[9px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded transition-all cursor-pointer ${
+                      previewSide === side
+                        ? 'bg-white dark:bg-zinc-700 text-indigo-600 dark:text-indigo-300 shadow-sm'
+                        : 'text-zinc-500 dark:text-zinc-400'
+                    }`}
+                  >
+                    {side === 'front' ? 'Frente' : 'Reverso'}
+                  </span>
+                ))}
+              </span>
+            )}
+            <ChevronDown
+              size={12}
+              className={`text-zinc-400 transition-transform ${previewOpen ? 'rotate-180' : ''}`}
+            />
+          </span>
+        </button>
+
+        {previewOpen && (
+          <div className="px-3 pb-3 pt-1 max-h-[40vh] overflow-y-auto">
+            <div className="relative bg-zinc-900 border border-zinc-700 rounded-xl p-3 shadow-md overflow-hidden">
+              <button
+                onClick={() => setPreviewSide(previewSide === 'front' ? 'back' : 'front')}
+                className="absolute top-1.5 right-2 text-zinc-500 hover:text-indigo-400 hover:rotate-180 transition-all duration-300 z-10"
+                title="Voltear"
+              >
+                <RotateCcw size={11} />
               </button>
-            ))}
-          </div>
-        </div>
+              {previewSide === 'front' ? <FrontTemplate mockData={mockData} /> : <BackTemplate mockData={mockData} />}
+            </div>
 
-        <div className="relative bg-zinc-900 border border-zinc-700 rounded-xl p-3 shadow-md overflow-hidden">
-          <button
-            onClick={() => setPreviewSide(previewSide === 'front' ? 'back' : 'front')}
-            className="absolute top-1.5 right-2 text-zinc-500 hover:text-indigo-400 hover:rotate-180 transition-all duration-300 z-10"
-            title="Voltear"
-          >
-            <RotateCcw size={11} />
-          </button>
-          {previewSide === 'front' ? <FrontTemplate mockData={mockData} /> : <BackTemplate mockData={mockData} />}
-        </div>
-
-        <div className="flex items-center justify-between gap-2 mt-2 px-0.5">
-          <div className="flex items-center gap-1">
-            <QualityBadge icon={<Volume2 size={9} />} label="Audio" detail="VAD" />
-            <QualityBadge icon={<Camera size={9} />} label="Frame" detail="centro" />
+            <div className="flex items-center justify-between gap-2 mt-2 px-0.5">
+              <div className="flex items-center gap-1">
+                <QualityBadge icon={<Volume2 size={9} />} label="Audio" detail="VAD" />
+                <QualityBadge icon={<Camera size={9} />} label="Frame" detail="centro" />
+              </div>
+              <span className="text-[9px] text-zinc-400 dark:text-zinc-500 font-mono">
+                {mappedCount}/{ankiFields.length} · 14KB
+              </span>
+            </div>
           </div>
-          <span className="text-[9px] text-zinc-400 dark:text-zinc-500 font-mono">{mappedCount}/{ankiFields.length} · 14KB</span>
-        </div>
+        )}
       </div>
     </div>
   );
