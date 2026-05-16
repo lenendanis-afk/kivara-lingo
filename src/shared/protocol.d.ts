@@ -14,6 +14,10 @@ import type {
   TranscribeResponse,
   TtsSpeakRequest,
   TtsResponse,
+  AiEnrichRequest,
+  AiEnrichResponse,
+  ResolveWordRequest,
+  ResolveWordResponse,
 } from './types';
 
 declare module 'webext-bridge' {
@@ -31,5 +35,7 @@ declare module 'webext-bridge' {
     TRANSCRIBE_AUDIO_CLIP: ProtocolWithReturn<TranscribeRequest, TranscribeResponse>;
     TRANSLATE: ProtocolWithReturn<TranslateRequest, TranslateResponse>;
     TTS_SPEAK: ProtocolWithReturn<TtsSpeakRequest, TtsResponse>;
+    AI_ENRICH: ProtocolWithReturn<AiEnrichRequest, AiEnrichResponse>;
+    RESOLVE_WORD: ProtocolWithReturn<ResolveWordRequest, ResolveWordResponse>;
   }
 }

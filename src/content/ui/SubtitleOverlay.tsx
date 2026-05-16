@@ -3,6 +3,7 @@ import { Volume1, Copy, Check, Quote, AudioLines, Camera } from 'lucide-react';
 import type { SubtitleStyles, Mode } from '../../shared/types';
 import { tokenizeSentence } from '../nlp/tokenize';
 import { lookupDictionary } from '../nlp/dictionary';
+import { useKivaraStore } from '../../shared/store';
 import { WordPopover } from './WordPopover';
 
 export interface SubtitleOverlayProps {
@@ -90,6 +91,9 @@ export function SubtitleOverlay({
 
   const targetSentence = cue?.text ?? '';
   const cueLanguage = cue?.language ?? 'en';
+  const includeAi = useKivaraStore(
+    (s) => s.ai.provider !== 'disabled' && !!s.ai.apiKey && s.ai.enrichOnHover,
+  );
 
   const tokens = useMemo(
     () => tokenizeSentence(targetSentence, effectiveExpanded, cueLanguage),
@@ -339,6 +343,9 @@ export function SubtitleOverlay({
                         onMouseEnter={() => handleTokenEnter(tok.key)}
                         onMouseLeave={handleTokenLeave}
                         token={tok.text}
+                        sentence={targetSentence}
+                        sourceLang={cueLanguage}
+                        includeAi={includeAi}
                         kind={tok.kind}
                         isExpanded={expandedMWEs.has(tok.key)}
                         isSaved={isSaved}

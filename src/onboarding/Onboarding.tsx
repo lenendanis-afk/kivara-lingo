@@ -6,18 +6,20 @@ import {
 import { KivaraLingoLogo } from '../app/components/KivaraLingoLogo';
 import { useKivaraStore } from '../shared/store';
 import type {
+  AiProvider,
   AnkiPingResponse,
   AnkiListsResponse,
   AnkiFieldsResponse,
   FieldSource,
 } from '../shared/types';
 
-type StepId = 'welcome' | 'anki' | 'mapping' | 'demo' | 'done';
+type StepId = 'welcome' | 'anki' | 'mapping' | 'ai' | 'demo' | 'done';
 
 const STEPS: { id: StepId; label: string }[] = [
   { id: 'welcome', label: 'Bienvenida' },
   { id: 'anki', label: 'Anki' },
   { id: 'mapping', label: 'Mapeo' },
+  { id: 'ai', label: 'IA (opcional)' },
   { id: 'demo', label: 'Demo' },
 ];
 
@@ -54,6 +56,7 @@ export function Onboarding() {
     isDarkMode, setIsDarkMode,
     ankiMapping, setAnkiMapping,
     onboarding, setOnboarding,
+    ai, setAi,
   } = useKivaraStore();
 
   const [step, setStep] = useState<StepId>('welcome');
@@ -376,6 +379,84 @@ export function Onboarding() {
                 </p>
               </div>
             )}
+          </Section>
+        )}
+
+        {step === 'ai' && (
+          <Section
+            title="Enriquecimiento IA (opcional)"
+            subtitle="Opcional — si quieres definiciones contextuales, sinónimos y matices generados por IA al guardar tarjetas."
+          >
+            <div className="space-y-3 text-sm text-zinc-600 dark:text-zinc-300">
+              <p>
+                Selecciona un proveedor y pega tu API key. Las respuestas se cachean en
+                IndexedDB para no pagar dos veces la misma palabra. Si lo dejas en
+                <strong> Desactivado</strong>, todo el flujo clásico (diccionario +
+                traductor) sigue funcionando igual.
+              </p>
+              <Row label="Proveedor">
+                <select
+                  value={ai.provider}
+                  onChange={(e) => setAi({ ...ai, provider: e.target.value as AiProvider })}
+                  className="sl-select w-full text-sm px-3 py-2 rounded border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900"
+                >
+                  <option value="disabled">Desactivado (omitir paso)</option>
+                  <option value="openai">OpenAI</option>
+                  <option value="anthropic">Anthropic</option>
+                  <option value="google-ai">Google Gemini</option>
+                </select>
+              </Row>
+              {ai.provider !== 'disabled' && (
+                <>
+                  <Row label="API key">
+                    <input
+                      type="password"
+                      value={ai.apiKey}
+                      onChange={(e) => setAi({ ...ai, apiKey: e.target.value })}
+                      placeholder="sk-... / Anthropic / Gemini API key"
+                      className="sl-input w-full text-sm px-3 py-2 rounded border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900"
+                    />
+                  </Row>
+                  <Row label="Modelo">
+                    <input
+                      type="text"
+                      value={ai.model}
+                      onChange={(e) => setAi({ ...ai, model: e.target.value })}
+                      placeholder={
+                        ai.provider === 'openai' ? 'gpt-4o-mini'
+                        : ai.provider === 'anthropic' ? 'claude-3-5-haiku-latest'
+                        : 'gemini-1.5-flash'
+                      }
+                      className="sl-input w-full text-sm px-3 py-2 rounded border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900"
+                    />
+                  </Row>
+                  <div className="flex flex-col gap-2">
+                    <label className="flex items-center gap-2 text-[12px] text-zinc-600 dark:text-zinc-300">
+                      <input
+                        type="checkbox"
+                        checked={ai.enrichOnSave}
+                        onChange={(e) => setAi({ ...ai, enrichOnSave: e.target.checked })}
+                      />
+                      Enriquecer al guardar tarjeta
+                    </label>
+                    <label className="flex items-center gap-2 text-[12px] text-zinc-600 dark:text-zinc-300">
+                      <input
+                        type="checkbox"
+                        checked={ai.enrichOnHover}
+                        onChange={(e) => setAi({ ...ai, enrichOnHover: e.target.checked })}
+                      />
+                      Mostrar sinónimos / colocaciones en hover
+                    </label>
+                  </div>
+                  {!ai.apiKey && (
+                    <p className="text-[11px] text-rose-600 dark:text-rose-400">
+                      Falta la API key — las llamadas IA se omitirán hasta que la añadas
+                      (esto no bloquea el flujo).
+                    </p>
+                  )}
+                </>
+              )}
+            </div>
           </Section>
         )}
 

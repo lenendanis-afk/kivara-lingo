@@ -2,6 +2,8 @@
 
 import { onMessage } from 'webext-bridge/background';
 import type {
+  AiEnrichRequest,
+  AiEnrichResponse,
   AnkiMapping,
   CaptureSettings,
   CreateCardRequest,
@@ -11,6 +13,9 @@ import type {
   AnkiFieldsResponse,
   AudioCaptureStatus,
   AudioClipResponse,
+  ResolveWordRequest,
+  ResolveWordResponse,
+  ResolveWordWave,
   TranscribeRequest,
   TranscribeResponse,
   TranslateRequest,
@@ -30,6 +35,8 @@ import {
 } from './audio-capture-manager';
 import { translateText } from './translate';
 import { speak } from './tts';
+import { enrichWithAi, getAiSettings, getResolvedNativeLang } from './ai-enrich';
+import { lookupDictionary } from '../content/nlp/dictionary';
 
 console.log('[Kivara Lingo] service worker booting');
 
@@ -232,6 +239,83 @@ onMessage('TRANSLATE', async ({ data }) => {
 onMessage('TTS_SPEAK', async ({ data }) => {
   const { text, lang } = (data as TtsSpeakRequest) ?? { text: '', lang: 'en' };
   const response: TtsResponse = await speak(text, lang);
+  return asJson(response);
+});
+
+onMessage('AI_ENRICH', async ({ data }) => {
+  const request = data as unknown as AiEnrichRequest;
+  const response: AiEnrichResponse = await enrichWithAi(request);
+  return asJson(response);
+});
+
+/**
+ * Three-wave token resolution for the popover. Performs the local dictionary
+ * lookup synchronously, falls back to the remote translator when needed, and
+ * (if requested) calls the AI provider. The waves are returned as an array so
+ * the consumer can render them progressively without needing port-based
+ * streaming — in practice the popover already has a 200 ms-ish dictionary
+ * spinner so this single round-trip is acceptable.
+ */
+onMessage('RESOLVE_WORD', async ({ data }) => {
+  const req = data as unknown as ResolveWordRequest;
+  const waves: ResolveWordWave[] = [];
+  const sourceLang = req.sourceLang || 'en';
+  const token = (req.token ?? '').trim();
+  const sentence = req.sentence ?? '';
+  if (!token) {
+    const empty: ResolveWordResponse = { ok: true, waves: [{ stage: 'local', entry: null }] };
+    return asJson(empty);
+  }
+
+  const local = lookupDictionary(token, sourceLang);
+  waves.push({ stage: 'local', entry: local ?? null });
+
+  if (!local) {
+    try {
+      const remote = await translateText({ text: token, sourceLang });
+      if (remote.ok && remote.translatedText) {
+        waves.push({
+          stage: 'remote',
+          translation: remote.translatedText,
+          provider: remote.provider ?? 'offline',
+          cached: remote.cached ?? false,
+        });
+      } else if (!remote.ok) {
+        waves.push({ stage: 'error', scope: 'remote', message: remote.error ?? 'translate failed' });
+      }
+    } catch (err) {
+      waves.push({
+        stage: 'error',
+        scope: 'remote',
+        message: err instanceof Error ? err.message : 'translate threw',
+      });
+    }
+  }
+
+  if (req.includeAi) {
+    const settings = await getAiSettings();
+    if (settings.provider !== 'disabled' && settings.apiKey && settings.enrichOnHover) {
+      const nativeLang = await getResolvedNativeLang(settings);
+      try {
+        const ai = await enrichWithAi({
+          token,
+          sentence,
+          sourceLang,
+          nativeLang,
+        });
+        if (ai.ok) waves.push({ stage: 'ai', data: ai.data });
+        else waves.push({ stage: 'error', scope: 'ai', message: ai.error });
+      } catch (err) {
+        waves.push({
+          stage: 'error',
+          scope: 'ai',
+          message: err instanceof Error ? err.message : 'AI threw',
+        });
+      }
+    }
+  }
+
+  const response: ResolveWordResponse = { ok: true, waves };
   return asJson(response);
 });
 

@@ -6,9 +6,10 @@
  *  - pending_notes: queue of requests that couldn't reach AnkiConnect; retried by alarm
  *  - translation_cache: provider responses keyed by (text, source, target, provider)
  *  - media_cache: optional dedup hashes for audio/frame blobs (kept small)
+ *  - ai_cache: AI enrichment responses keyed by provider+source+native+sha1(token+sentence)
  */
 import Dexie, { type Table } from 'dexie';
-import type { CreateCardRequest } from './types';
+import type { AiEnrichment, AiProvider, CreateCardRequest } from './types';
 
 export interface SavedNoteRow {
   id?: number;
@@ -54,11 +55,25 @@ export interface MediaCacheRow {
   createdAt: number;
 }
 
+export interface AiCacheRow {
+  /** composite key — see {@link aiCacheKey} */
+  key: string;
+  provider: AiProvider;
+  sourceLang: string;
+  nativeLang: string;
+  token: string;
+  sentence: string;
+  data: AiEnrichment;
+  expiresAt: number;
+  createdAt: number;
+}
+
 class KivaraDB extends Dexie {
   saved_notes!: Table<SavedNoteRow, number>;
   pending_notes!: Table<PendingNoteRow, number>;
   translation_cache!: Table<TranslationRow, string>;
   media_cache!: Table<MediaCacheRow, string>;
+  ai_cache!: Table<AiCacheRow, string>;
 
   constructor() {
     super('kivara-lingo');
@@ -68,6 +83,14 @@ class KivaraDB extends Dexie {
       translation_cache: '&key, [provider+sourceLang+targetLang], expiresAt',
       media_cache: '&hash, kind, createdAt',
     });
+    this.version(2)
+      .stores({
+        saved_notes: '++id, &[token+language+sentence], ankiNoteId, createdAt',
+        pending_notes: '++id, nextAttemptAt, createdAt',
+        translation_cache: '&key, [provider+sourceLang+targetLang], expiresAt',
+        media_cache: '&hash, kind, createdAt',
+        ai_cache: '&key, [provider+sourceLang+nativeLang], expiresAt',
+      });
   }
 }
 
@@ -86,4 +109,29 @@ export function translationCacheKey(
   text: string,
 ): string {
   return `${provider}|${source}|${target}|${text.trim().toLowerCase()}`;
+}
+
+/**
+ * Stable cache key for AI enrichment responses. Uses a lightweight hash over
+ * the (token, sentence) tuple so the key length stays bounded even for long
+ * cues. Not cryptographically strong — only a dedup helper.
+ */
+export function aiCacheKey(
+  provider: string,
+  source: string,
+  native: string,
+  token: string,
+  sentence: string,
+): string {
+  const normalized = `${token.trim().toLowerCase()}|${sentence.trim().toLowerCase()}`;
+  return `${provider}|${source}|${native}|${djb2(normalized)}`;
+}
+
+function djb2(input: string): string {
+  let hash = 5381;
+  for (let i = 0; i < input.length; i += 1) {
+    hash = ((hash << 5) + hash + input.charCodeAt(i)) | 0;
+  }
+  // unsigned 32-bit hex
+  return (hash >>> 0).toString(16);
 }

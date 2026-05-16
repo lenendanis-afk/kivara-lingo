@@ -8,6 +8,7 @@ import type {
   CleanupSettings,
   TranslateSettings,
   AsrSettings,
+  AiSettings,
   OnboardingState,
 } from './types';
 
@@ -60,6 +61,15 @@ export const DEFAULT_ASR: AsrSettings = {
   model: 'tiny',
 };
 
+export const DEFAULT_AI: AiSettings = {
+  provider: 'disabled',
+  apiKey: '',
+  model: 'gpt-4o-mini',
+  enrichOnSave: false,
+  enrichOnHover: false,
+  cacheTtlDays: 30,
+};
+
 export const DEFAULT_ONBOARDING: OnboardingState = {
   completed: false,
   completedAt: null,
@@ -77,6 +87,7 @@ export interface KivaraState {
   cleanup: CleanupSettings;
   translate: TranslateSettings;
   asr: AsrSettings;
+  ai: AiSettings;
   onboarding: OnboardingState;
   audioCaptureActive: boolean;
 
@@ -91,6 +102,7 @@ export interface KivaraState {
   setCleanup: (c: CleanupSettings | ((prev: CleanupSettings) => CleanupSettings)) => void;
   setTranslate: (t: TranslateSettings | ((prev: TranslateSettings) => TranslateSettings)) => void;
   setAsr: (a: AsrSettings | ((prev: AsrSettings) => AsrSettings)) => void;
+  setAi: (a: AiSettings | ((prev: AiSettings) => AiSettings)) => void;
   setOnboarding: (o: OnboardingState | ((prev: OnboardingState) => OnboardingState)) => void;
   setAudioCaptureActive: (v: boolean) => void;
   resetSubtitleStyles: () => void;
@@ -167,6 +179,7 @@ export const useKivaraStore = create<KivaraState>()(
       cleanup: DEFAULT_CLEANUP,
       translate: DEFAULT_TRANSLATE,
       asr: DEFAULT_ASR,
+      ai: DEFAULT_AI,
       onboarding: DEFAULT_ONBOARDING,
       audioCaptureActive: false,
 
@@ -199,6 +212,10 @@ export const useKivaraStore = create<KivaraState>()(
         set((state) => ({
           asr: typeof a === 'function' ? a(state.asr) : a,
         })),
+      setAi: (a) =>
+        set((state) => ({
+          ai: typeof a === 'function' ? a(state.ai) : a,
+        })),
       setOnboarding: (o) =>
         set((state) => ({
           onboarding: typeof o === 'function' ? o(state.onboarding) : o,
@@ -221,6 +238,7 @@ export const useKivaraStore = create<KivaraState>()(
         cleanup: state.cleanup,
         translate: state.translate,
         asr: state.asr,
+        ai: state.ai,
         onboarding: state.onboarding,
       }),
     },

@@ -19,6 +19,11 @@ export type FieldSource =
   | 'frame'
   | 'tabCapture'
   | 'tts'
+  | 'ai-definition'
+  | 'ai-synonyms'
+  | 'ai-collocations'
+  | 'ai-nuance'
+  | 'ai-register'
   | 'manual';
 
 export interface AudioClipResponse {
@@ -167,6 +172,101 @@ export type TranscribeResponse =
       clip: AudioClipResponse;
     }
   | { ok: false; error: string; transient?: boolean };
+
+export type AiProvider = 'openai' | 'anthropic' | 'google-ai' | 'disabled';
+
+export interface AiSettings {
+  /** Active AI backend */
+  provider: AiProvider;
+  /** API key (chrome.storage.sync — never committed) */
+  apiKey: string;
+  /** Model identifier (e.g. gpt-4o-mini, claude-3-5-haiku-latest, gemini-1.5-flash) */
+  model: string;
+  /** Optional native language override (defaults to translate.targetLanguage) */
+  nativeLanguage?: string;
+  /** Enrich the saved card at save-time */
+  enrichOnSave: boolean;
+  /** Enrich the popover when the user hovers a word */
+  enrichOnHover: boolean;
+  /** Cache TTL in days for AI responses (default 30) */
+  cacheTtlDays: number;
+}
+
+export interface AiEnrichment {
+  /** Definition tailored to the cue context */
+  contextualDefinition: string;
+  /** Up to 5 synonyms in the source language */
+  synonyms: string[];
+  /** Up to 5 common collocations in the source language */
+  collocations: string[];
+  /** Nuanced translation that respects the cue context */
+  nuancedTranslation: string;
+  /** Detected register */
+  register: 'formal' | 'neutral' | 'informal' | 'slang' | 'literary';
+  /** How appropriate the token is for the platform's typical audience */
+  appropriateness: string;
+  /** Which provider was used (filled by the wrapper) */
+  provider: AiProvider;
+  /** Latency of the call in ms (filled by the wrapper) */
+  latencyMs: number;
+  /** True when the value came from the IndexedDB cache */
+  cached: boolean;
+}
+
+export interface AiEnrichRequest {
+  token: string;
+  sentence: string;
+  sourceLang: string;
+  nativeLang: string;
+  platform?: string;
+}
+
+export type AiEnrichResponse =
+  | { ok: true; data: AiEnrichment }
+  | { ok: false; error: string; provider: AiProvider };
+
+/** Streaming-style resolution for the WordPopover */
+export interface ResolveWordRequest {
+  token: string;
+  sentence: string;
+  sourceLang: string;
+  /** Whether the caller wants the AI wave (only fires if AI settings allow it) */
+  includeAi?: boolean;
+}
+
+export interface ResolveWordLocalWave {
+  stage: 'local';
+  entry: DictionaryEntry | null;
+}
+
+export interface ResolveWordRemoteWave {
+  stage: 'remote';
+  translation: string;
+  provider: string;
+  cached: boolean;
+}
+
+export interface ResolveWordAiWave {
+  stage: 'ai';
+  data: AiEnrichment;
+}
+
+export interface ResolveWordErrorWave {
+  stage: 'error';
+  scope: 'remote' | 'ai';
+  message: string;
+}
+
+export type ResolveWordWave =
+  | ResolveWordLocalWave
+  | ResolveWordRemoteWave
+  | ResolveWordAiWave
+  | ResolveWordErrorWave;
+
+export interface ResolveWordResponse {
+  ok: true;
+  waves: ResolveWordWave[];
+}
 
 export interface OnboardingState {
   /** Whether the user has completed initial setup */

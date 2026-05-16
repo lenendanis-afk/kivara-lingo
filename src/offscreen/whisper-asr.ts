@@ -64,13 +64,22 @@ export interface WhisperError {
 export type WhisperResult = WhisperTranscription | WhisperError;
 
 /**
- * Conservative defaults. The CDN-hosted assets are pinned to a specific
- * commit so we don't get silently swapped under us. Users with a private
- * deployment can override `whisperConfig` via `setWhisperConfig`.
+ * Conservative defaults. We DO NOT ship a Whisper glue ourselves — the
+ * upstream whisper.cpp repository does not publish a stable
+ * browser-loadable `whisper.js` file that exposes `globalThis.WhisperModule`
+ * at the URL we pin (the previous default of `libmain.worker.js` is a
+ * Web Worker entry, not a `Module` factory, and would fail to `init()`).
+ *
+ * Instead, ASR is opt-in: the user must point `AsrSettings.glueUrl` at a
+ * compatible build (e.g. https://whisper-cdn.example.com/whisper.js) and
+ * `AsrSettings.modelUrl` at a `.bin` mirror. See `README.md → ASR` for
+ * step-by-step instructions on building/hosting the glue. Until those URLs
+ * are configured, `transcribePcm` will fail with a clear error and the
+ * orchestrator will skip the ASR fallback.
  */
 const DEFAULT_CONFIG: WhisperConfig = {
-  glueUrl: 'https://cdn.jsdelivr.net/gh/ggerganov/whisper.cpp@1.5.4/examples/whisper.wasm/libmain.worker.js',
-  modelUrl: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.en.bin',
+  glueUrl: '',
+  modelUrl: '',
   cacheName: 'kivara-lingo-whisper-v1',
 };
 
@@ -115,6 +124,13 @@ interface WhisperModule {
  */
 async function fetchModel(): Promise<ArrayBuffer> {
   if (modelBufferPromise) return modelBufferPromise;
+  if (!activeConfig.modelUrl) {
+    return Promise.reject(
+      new Error(
+        'Whisper model URL is not configured. Set AsrSettings.modelUrl in Settings → ASR.',
+      ),
+    );
+  }
   const promise = (async () => {
     const cacheName = activeConfig.cacheName ?? DEFAULT_CONFIG.cacheName!;
     const cache = await caches.open(cacheName);
@@ -152,6 +168,13 @@ async function fetchModel(): Promise<ArrayBuffer> {
  */
 async function loadModule(): Promise<WhisperModule> {
   if (modulePromise) return modulePromise;
+  if (!activeConfig.glueUrl) {
+    return Promise.reject(
+      new Error(
+        'Whisper glue URL is not configured. Set AsrSettings.glueUrl in Settings → ASR.',
+      ),
+    );
+  }
   const promise = (async () => {
     const [modelBuffer] = await Promise.all([fetchModel()]);
     await injectGlueScript(activeConfig.glueUrl);
