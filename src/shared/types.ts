@@ -359,6 +359,12 @@ export interface DictionaryEntry {
   monolingual?: string;
   level?: 'A1' | 'A2' | 'B1' | 'B2' | 'C1' | 'C2';
   /**
+   * Native-language example sentences from the dictionary. Rendered under the
+   * monolingual definition in the popover and surfaced as a separate field in
+   * the Anki auto-mapping when the user creates a card.
+   */
+  examples?: string[];
+  /**
    * Source attribution surfaced in the popover footer. Useful for chain-mode
    * lookups so the user can see whether the translation came from the bundled
    * dictionary, MyMemory, DeepL, etc.
