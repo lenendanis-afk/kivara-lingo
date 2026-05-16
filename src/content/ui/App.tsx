@@ -258,7 +258,11 @@ export function App({ adapter, videoElement, videoOverlayRoot }: AppProps) {
             position: 'absolute',
             top: 0,
             right: 0,
-            bottom: 0,
+            // Leave a small inset at the bottom in dock-to-side mode so the
+            // panel never sits flush against the OS taskbar / browser chrome,
+            // which would otherwise overlap the last row of every tab.
+            // Popup mode positions itself with `top-24` so this doesn't apply.
+            bottom: isPopupMode ? 0 : 12,
             display: 'flex',
             alignItems: 'stretch',
           }}
@@ -274,13 +278,19 @@ export function App({ adapter, videoElement, videoOverlayRoot }: AppProps) {
             mapping={ankiMapping}
             setMapping={setAnkiMapping}
             mockData={{
-              targetSentence: activeCue?.text ?? '',
-              nativeSentence: '',
-              word: '',
-              translation: '',
-              phonetic: '',
-              bilingual: '',
-              monolingual: '',
+              // Until Phase 3 wires dictionary/translation lookup to the live
+              // cue, the preview falls back to a deterministic placeholder so
+              // FRENTE / REVERSO actually render something (instead of an
+              // empty dark card). The live cue text still feeds
+              // `targetSentence` when present so the user sees their current
+              // line in REVERSO.
+              targetSentence: activeCue?.text || "These days, Nicola doesn't travel much.",
+              nativeSentence: 'Estos días, Nicola no viaja mucho.',
+              word: 'these days',
+              translation: 'estos días',
+              phonetic: '/ðiːz deɪz/',
+              bilingual: '(noun) estos días',
+              monolingual: 'Used to refer to the present time period.',
             }}
           />
         </div>

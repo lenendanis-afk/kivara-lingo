@@ -35,7 +35,10 @@ export function SubtitlesTab({ styles, setStyles }: SubtitlesTabProps) {
 
   return (
     <div className="h-full min-h-0 overflow-y-auto bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100">
-      <div className="p-3 pb-6 space-y-3">
+      {/* `pb-12` reserves enough scroll room so the last "Altura" slider stays
+          fully readable even when the OS taskbar (or browser chrome in
+          dock-to-side mode) overlaps the bottom of the panel. */}
+      <div className="p-3 pb-12 space-y-3">
 
         {/* Header bar with reset */}
         <div className="flex items-center justify-between px-0.5">

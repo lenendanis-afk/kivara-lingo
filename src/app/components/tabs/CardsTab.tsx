@@ -138,7 +138,9 @@ export function CardsTab({ mapping, setMapping, mockData }: CardsTabProps) {
 
   return (
     <div className="flex flex-col h-full min-h-0 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100">
-      <div className="flex-1 min-h-0 overflow-y-auto p-3 pb-4 space-y-3">
+      {/* `pb-6` keeps the last mapping row readable above the docked
+          preview (which has its own `border-t`). */}
+      <div className="flex-1 min-h-0 overflow-y-auto p-3 pb-6 space-y-3">
 
         {/* Conexión */}
         <Section

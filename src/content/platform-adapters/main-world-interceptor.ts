@@ -12,8 +12,15 @@
  * `<script src=...>` injection, and the player calls live in the page's own
  * realm. Manifest-declared MAIN content scripts bypass CSP at the runtime
  * level (Chrome 102+).
+ *
+ * Subtitle detection happens in two passes:
+ *   1. URL fast-path — file extension or path keyword match (cheap).
+ *   2. Content sniff — for "interesting" hosts (streaming CDNs, the current
+ *      origin, etc.) we read the response body and check for the WEBVTT /
+ *      TTML signatures. This catches platforms (notably HBO Max) that serve
+ *      WebVTT segments without a `.vtt` extension in the URL.
  */
-import { parseAny } from './parsers';
+import { parseAny, detectSubtitleKind } from './parsers';
 
 const TAG = '[Kivara Lingo / MAIN]';
 const EVENT = 'kivara-lingo:subtitle-track';
@@ -28,7 +35,8 @@ declare global {
   if (window.__KIVARA_MAIN_INSTALLED) return;
   window.__KIVARA_MAIN_INSTALLED = true;
 
-  const matchers: Array<(url: string) => boolean> = [
+  // Fast-path URL matchers — these match in O(1) and skip the content sniff.
+  const fastMatchers: Array<(url: string) => boolean> = [
     // Netflix TTML/DFXP
     (url) =>
       /nflxvideo\.net/i.test(url) &&
@@ -36,21 +44,83 @@ declare global {
     // Disney+ WebVTT
     (url) => /disneyplus\.com/i.test(url) && /\.vtt(\?|$)/i.test(url),
     (url) => /\.bamgrid\.com/i.test(url) && /\.vtt(\?|$)/i.test(url),
-    // HBO Max / Max WebVTT
-    (url) => /(hbomax|max)\.com/i.test(url) && /\.vtt(\?|$)/i.test(url),
+    // HBO Max / Max WebVTT — narrower than the previous `(hbomax|max)\.com`
+    // which over-matched things like `maxcdn-other-thing.com`.
+    (url) =>
+      /(?:^|\/\/)([a-z0-9-]+\.)?(hbomax|hbomaxsdash|maxcdn|maxstream)\.(?:com|net)/i.test(url) &&
+      /\.vtt(\?|$)/i.test(url),
+    (url) => /(?:play|cdn)\.max\.com/i.test(url) && /\.vtt(\?|$)/i.test(url),
     // Prime Video TTML/DFXP — often hosted on cloudfront
     (url) => /cloudfront\.net/i.test(url) && /\.dfxp(\?|$)/i.test(url),
     (url) => /(media-amazon|primevideo)\.com/i.test(url) && /\.(xml|dfxp|ttml)(\?|$)/i.test(url),
-    // Generic catch-all for any .vtt/.ttml served from the current page origin
-    (url) => /\.(vtt|ttml)(\?|$)/i.test(url),
+    // Generic extension match — covers same-origin and unknown CDNs.
+    (url) => /\.(vtt|ttml|dfxp)(\?|$)/i.test(url),
+    // Path-keyword match — captures URLs that have no extension but live
+    // under a subtitle-ish path segment (covers HBO segmented VTT, where the
+    // URL ends in `/subtitle/<n>` without `.vtt`).
+    (url) =>
+      /\/(subtitles?|captions?|webvtt|wvtt|texttrack|timedtext|t\/sub)(?:\/|\?|$)/i.test(url),
   ];
 
-  function isSubtitleUrl(url: string): boolean {
+  // Hosts where we *also* run the content sniff (i.e. the URL pattern is
+  // unknown but the host is known to serve streaming media). Keep this list
+  // narrow to avoid pointless body reads on analytics / ad / API endpoints.
+  const SNIFF_HOSTS: RegExp[] = [
+    /(^|\.)hbomax\.com$/i,
+    /(^|\.)max\.com$/i,
+    /hbomaxsdash/i,
+    /maxcdn/i,
+    /(^|\.)nflxvideo\.net$/i,
+    /(^|\.)disneyplus\.com$/i,
+    /\.bamgrid\.com$/i,
+    /(^|\.)primevideo\.com$/i,
+    /media-amazon\.com$/i,
+    /cloudfront\.net$/i,
+    /akamaihd\.net$/i,
+  ];
+
+  // Extensions / hosts that are obviously NOT subtitles — skip them so we
+  // don't waste bandwidth reading binary streams or analytics pings.
+  const SKIP_EXT =
+    /\.(m4s|mp4|m4a|m4v|ts|aac|webm|mpd|m3u8|jpg|jpeg|png|webp|gif|svg|woff2?|ttf|js|css|wasm)(\?|$)/i;
+  const SKIP_HOSTS: RegExp[] = [
+    /events\.brightline\.tv/i,
+    /\.litix\.io$/i,
+    /\.fwmrm\.net$/i,
+    /branch\.io$/i,
+    /app\.link$/i,
+    /google-analytics\.com$/i,
+    /googletagmanager\.com$/i,
+    /doubleclick\.net$/i,
+  ];
+
+  function hostOf(url: string): string {
     try {
-      return matchers.some((m) => m(url));
+      return new URL(url, window.location.href).hostname;
+    } catch {
+      return '';
+    }
+  }
+
+  function isFastMatch(url: string): boolean {
+    try {
+      return fastMatchers.some((m) => m(url));
     } catch {
       return false;
     }
+  }
+
+  function shouldSniff(url: string): boolean {
+    if (SKIP_EXT.test(url)) return false;
+    const host = hostOf(url);
+    if (!host) return false;
+    if (SKIP_HOSTS.some((re) => re.test(host))) return false;
+    return SNIFF_HOSTS.some((re) => re.test(host)) || host === window.location.hostname;
+  }
+
+  function looksLikeSubtitle(body: string): boolean {
+    if (!body) return false;
+    return detectSubtitleKind('', body) !== null;
   }
 
   function postCues(url: string, body: string) {
@@ -70,16 +140,29 @@ declare global {
     }
   }
 
+  function maybePostCues(url: string, body: string, fromSniff: boolean) {
+    // Sniff requests aren't guaranteed to be subtitles — gate them on the
+    // body header so we don't try to parse random JSON / HTML.
+    if (fromSniff && !looksLikeSubtitle(body)) return;
+    postCues(url, body);
+  }
+
   const origFetch = window.fetch;
   window.fetch = async function patchedFetch(...args: Parameters<typeof fetch>): Promise<Response> {
     const response = await origFetch.apply(this, args);
     try {
-      const url = typeof args[0] === 'string' ? args[0] : (args[0] as Request).url || (args[0] as URL).href || '';
-      if (url && isSubtitleUrl(url)) {
+      const url =
+        typeof args[0] === 'string'
+          ? args[0]
+          : (args[0] as Request)?.url || (args[0] as URL)?.href || '';
+      if (!url) return response;
+      const fast = isFastMatch(url);
+      const sniff = !fast && shouldSniff(url);
+      if (fast || sniff) {
         response
           .clone()
           .text()
-          .then((body) => postCues(url, body))
+          .then((body) => maybePostCues(url, body, sniff))
           .catch(() => {});
       }
     } catch (err) {
@@ -88,16 +171,50 @@ declare global {
     return response;
   };
 
+  // Decode an arraybuffer / blob xhr.response into text, best-effort. Returns
+  // `null` if we can't reasonably convert (e.g. non-text MIME type, oversized
+  // payload, or a blob that needs async reading from the load handler).
+  function decodeXhrBody(xhr: XMLHttpRequest): string | null {
+    const t = xhr.responseType;
+    try {
+      if (t === '' || t === 'text') {
+        return typeof xhr.responseText === 'string' ? xhr.responseText : null;
+      }
+      if (t === 'arraybuffer' && xhr.response instanceof ArrayBuffer) {
+        if (xhr.response.byteLength > 2 * 1024 * 1024) return null;
+        return new TextDecoder('utf-8', { fatal: false }).decode(xhr.response);
+      }
+      if (t === 'json') return null;
+      if (typeof xhr.response === 'string') return xhr.response;
+    } catch {
+      // ignore — we just won't try to parse this one
+    }
+    return null;
+  }
+
   const OrigXHR = window.XMLHttpRequest;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   function PatchedXHR(this: any) {
     const xhr = new OrigXHR();
     let interceptUrl: string | null = null;
+    let sniffOnly = false;
     const origOpen = xhr.open;
-    xhr.open = function (method: string, url: string | URL, async_?: boolean, username?: string | null, password?: string | null) {
+    xhr.open = function (
+      method: string,
+      url: string | URL,
+      async_?: boolean,
+      username?: string | null,
+      password?: string | null,
+    ) {
       try {
         const u = typeof url === 'string' ? url : url.href;
-        if (isSubtitleUrl(u)) interceptUrl = u;
+        if (isFastMatch(u)) {
+          interceptUrl = u;
+          sniffOnly = false;
+        } else if (shouldSniff(u)) {
+          interceptUrl = u;
+          sniffOnly = true;
+        }
       } catch {
         // ignore
       }
@@ -106,15 +223,17 @@ declare global {
     xhr.addEventListener('load', () => {
       if (!interceptUrl) return;
       try {
-        const body =
-          typeof xhr.responseText === 'string'
-            ? xhr.responseText
-            : xhr.response && typeof xhr.response === 'string'
-              ? xhr.response
-              : '';
-        if (body) postCues(interceptUrl, body);
+        const body = decodeXhrBody(xhr);
+        if (body) maybePostCues(interceptUrl, body, sniffOnly);
       } catch (err) {
-        console.warn(TAG, 'XHR load handler failed', err);
+        // Players that use `responseType = 'arraybuffer'` (HBO Max, etc.) used
+        // to throw an InvalidStateError here because we read `responseText`
+        // unconditionally. `decodeXhrBody` now handles that, but keep this
+        // guard so any future surprise doesn't spam the console.
+        const name = (err as { name?: string })?.name;
+        if (name !== 'InvalidStateError') {
+          console.warn(TAG, 'XHR load handler failed', err);
+        }
       }
     });
     return xhr;

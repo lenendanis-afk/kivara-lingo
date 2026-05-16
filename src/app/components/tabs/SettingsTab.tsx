@@ -30,7 +30,10 @@ export function SettingsTab() {
 
   return (
     <div className="h-full min-h-0 overflow-y-auto bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100">
-      <div className="p-3 pb-6 space-y-3">
+      {/* `pb-12` reserves enough scroll room so the last "Atajos" row stays
+          fully readable even when the OS taskbar overlaps the bottom of the
+          panel in dock-to-side mode. */}
+      <div className="p-3 pb-12 space-y-3">
 
         {/* Captura */}
         <Section
