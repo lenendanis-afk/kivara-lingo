@@ -611,47 +611,106 @@ async function translate(text: string, source: string, target: string) {
 
 Cadena de fallback real (`src/background/tts.ts`):
 
-1. **`chrome.tts.speak()`** — usa las voces del sistema, sin permiso adicional. Es la opción más rápida y de mejor calidad en macOS/Windows.
-2. Si `chrome.tts` no está disponible (no existe la API o falla por idioma sin voz), se pasa por mensaje `OFFSCREEN_TTS_SPEAK` al offscreen, que ejecuta `SpeechSynthesisUtterance` con la voz mejor matched para el BCP-47 solicitado (`src/offscreen/tts-fallback.ts::speakViaSpeechSynthesis`).
-3. Si el usuario configura una clave premium (ElevenLabs / Google TTS), iría aquí como prioridad 0 — no implementado en esta fase para no añadir dependencias.
+1. **`chrome.tts.speak()`** — usa las voces del sistema, sin permiso adicional. Es la opción más rápida y de mejor calidad en macOS/Windows. Solo aplica a *reproducción inmediata* dentro de la extensión.
+2. Si `chrome.tts` no está disponible, se pasa por mensaje `OFFSCREEN_TTS_SPEAK` al offscreen (`SpeechSynthesisUtterance` con la voz BCP-47 más cercana).
+3. **TTS como archivo de audio adjunto a Anki** (`generateTtsAudio(text, lang)`): cuando el orquestador tiene que rellenar un `FieldSource = 'tts'` y no hay clip de tabCapture disponible, llama al endpoint `/v1/audio/speech` de OpenAI (`model: tts-1`, `voice: alloy`, `response_format: mp3`) reutilizando la `apiKey` que el usuario ya configuró en "IA (premium)". Si la respuesta es exitosa, el MP3 se guarda en Anki vía `storeMediaFile` y el campo recibe un `[sound:archivo.mp3]`. Si OpenAI no está configurado o falla, el campo cae al texto plano con la plantilla `{{tts <lang>:Field}}` para que Anki lo lea con su TTS interno (sin regresión respecto al comportamiento previo).
+4. **Costo**: OpenAI `tts-1` cuesta ~USD 0.015 por cada 1000 caracteres. Una palabra promedio (~5 chars) sale a ~USD 0.0000075. Documentado para que el usuario decida activarlo o no.
 
 El offscreen mantiene una promesa pendiente por petición y resuelve en `utterance.onend` / `onerror`. Cualquier petición pendiente se cancela en `stopCapture()` (botón Stop del popup).
 
 ### 9.5 ASR on-device — Whisper.cpp WASM
 
-Implementado en `src/offscreen/whisper-asr.ts` como **scaffolding opt-in** (no se descarga modelo ni glue hasta que el usuario active "ASR on-device" en Settings y se invoque `TRANSCRIBE_AUDIO_CLIP`).
+Implementado en `src/offscreen/whisper-asr.ts` como **scaffolding opt-in con URLs configurables por el usuario** (no se descarga modelo ni glue hasta que el usuario active "ASR on-device" en Settings, configure `glueUrl`/`modelUrl` y se invoque `TRANSCRIBE_AUDIO_CLIP`).
 
 Arquitectura:
 
 ```
-service-worker          offscreen document          CDN / Cache Storage
-─────────────────       ──────────────────          ───────────────────
-TRANSCRIBE_AUDIO_CLIP → OFFSCREEN_TRANSCRIBE_CLIP →  whisper.cpp glue   (jsdelivr, pinned tag)
-                                  │                  ggml-tiny.en.bin   (HuggingFace)
-                                  ▼
-                              cache.add()  →        Cache Storage `kivara-whisper-v1`
+service-worker          offscreen document          CDN configurada por el usuario
+─────────────────       ──────────────────          ──────────────────────────────
+TRANSCRIBE_AUDIO_CLIP → OFFSCREEN_TRANSCRIBE_CLIP →  whisper.js (factory que expone
+                                  │                  globalThis.WhisperModule)
+                                  ▼                  ggml-tiny.en.bin
+                              cache.add()  →        Cache Storage `kivara-lingo-whisper-v1`
                                   │                  (sobrevive a recargas, no a uninstall)
                                   ▼
-                              transcribePcm(samples,sampleRate) ──► texto + segments
+                              transcribePcm(samples, sampleRate) ──► texto + segments
 ```
 
-URLs por defecto (override-able desde `AsrSettings.glueUrl` / `modelUrl`):
+URLs **no se pinea automáticamente** (cambio post-Bloque 4): los defaults estaban apuntando a `libmain.worker.js` del repo upstream, que es un *Web Worker entry*, no la factory `Module` que `loadModule()` necesita. Hacer `init()` sobre eso fallaba siempre con `"Whisper glue did not expose a compatible Module instance"`. Soluciones aceptables:
 
-| Recurso | URL |
-|---|---|
-| Glue JS | `https://cdn.jsdelivr.net/gh/ggerganov/whisper.cpp@1.5.4/examples/whisper.wasm/libmain.worker.js` |
-| Modelo `tiny.en` (~75 MB) | `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.en.bin` |
+1. **Compilar tu propio glue** (recomendado, ver `README.md → ASR`): clonar `ggerganov/whisper.cpp@1.5.4`, `cd examples/whisper.wasm && make`, subir `whisper.js` + `whisper.wasm` + `ggml-tiny.en.bin` a tu propio CDN/bucket y configurar las URLs en `Settings → ASR`.
+2. **Usar un fork mantenido por la comunidad** que ya exponga `globalThis.WhisperModule` (p. ej. forks de `whisper.wasm` con un build pre-compilado en GitHub Pages).
 
-Flujo:
+Si `AsrSettings.glueUrl` o `AsrSettings.modelUrl` están vacíos, `transcribePcm` rechaza con un error claro y el orquestador omite la pasada ASR (no rompe el resto del pipeline).
 
-1. `fetchModel()` busca el binario en `caches.open('kivara-whisper-v1')`. Si no está, hace `fetch` con `credentials: 'omit'` y lo guarda con `cache.put`. La primera descarga puede tomar 1-2 minutos en redes lentas.
-2. `loadModule()` hace `import(glueUrl)` dinámico — el WASM glue es un módulo ES que expone `Module.init({ wasmBinary, modelData })`.
-3. `transcribePcm(samples, sampleRate, language)` empaqueta el PCM Float32 en el formato esperado por Whisper.cpp (32-bit IEEE 754, mono), llama al binding y devuelve `{ ok: true, text, segments[], language }`.
+Flujo (una vez configurado):
+
+1. `fetchModel()` busca el binario en `caches.open('kivara-lingo-whisper-v1')`. Si no está, hace `fetch` con `mode: 'cors'` y lo guarda con `cache.put`. La primera descarga puede tomar 1-2 minutos en redes lentas.
+2. `loadModule()` inyecta `<script src="glueUrl">` (no `import()` para evitar problemas con CSPs estrictos) y espera a que aparezca `globalThis.WhisperModule` o `globalThis.Module`.
+3. `transcribePcm(samples, sampleRate, language)` empaqueta el PCM Float32 en el formato esperado por Whisper.cpp (32-bit IEEE 754, mono) y llama al binding.
 4. `unloadWhisper()` libera el módulo en `stopCapture()` para no retener ~80 MB de RAM cuando el usuario no está usando ASR.
 
 **Errores transitorios** (red, timeout descarga del modelo) devuelven `{ ok: false, transient: true }` para que el caller pueda reintentar sin invalidar la config.
 
 **Por qué no `transformers.js`:** la librería en sí pesa ~2 MB minified y añade una dependencia grande. El glue oficial de `whisper.cpp` es de ~150 kB y está específicamente optimizado para WASM en navegador. Lo único que perdemos es el high-level API; lo añadimos a mano.
+
+### 9.6 IA (premium) — capa 4 de enriquecimiento contextual
+
+Nueva capa opcional implementada en Bloques 1-3. Vive en `src/background/ai-providers.ts` (adapters) + `src/background/ai-enrich.ts` (cache + debounce + concurrencia).
+
+**Proveedores soportados** (con la misma forma de respuesta `AiEnrichment`):
+
+| Provider | Endpoint | Modelo default sugerido |
+|---|---|---|
+| OpenAI | `POST https://api.openai.com/v1/chat/completions` (`response_format: { type: 'json_object' }`) | `gpt-4o-mini` |
+| Anthropic | `POST https://api.anthropic.com/v1/messages` (`anthropic-version: 2023-06-01`) | `claude-3-5-haiku-latest` |
+| Google Gemini | `POST https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={apiKey}` (`responseMimeType: application/json`) | `gemini-1.5-flash` |
+| `disabled` | — | — (default; no se hacen requests) |
+
+**Prompt común** (verbatim, lo usan los tres adapters):
+
+> Eres un asistente de aprendizaje de idiomas. Devuelve SOLO JSON con las claves contextualDefinition, synonyms (array<=5), collocations (array<=5), nuancedTranslation, register (formal|neutral|informal|slang|literary), appropriateness. Idioma fuente: {sourceLang}. Idioma nativo: {nativeLang}. Palabra/frase: "{token}". Oración: "{sentence}". Plataforma: {platform}.
+
+**Cache + debounce** (`enrichWithAi`):
+
+- Tabla Dexie `ai_cache` (v2 del schema), clave `${provider}|${sourceLang}|${nativeLang}|${djb2(token+sentence)}`.
+- TTL configurable en días (default 30) vía `AiSettings.cacheTtlDays`.
+- Debounce hard de 300 ms entre llamadas outbound; las peticiones con la misma clave se coalescen vía un `Map<cacheKey, Promise>`.
+- Timeout duro de 5 s por llamada (mismo patrón que `translate-providers.ts`).
+- Errores se devuelven como `{ ok: false, error }`; el orquestador los agrega como `warnings` en la tarjeta para que el usuario sepa qué falló sin perder el resto del flujo.
+
+**Feature flags**:
+
+| Flag | Default | Efecto |
+|---|---|---|
+| `AiSettings.provider !== 'disabled'` + `apiKey` no vacía | `disabled` | Habilita toda la capa. |
+| `AiSettings.enrichOnSave` | `false` | Cuando se guarda una tarjeta, llamar al provider y rellenar campos `ai-*`. |
+| `AiSettings.enrichOnHover` | `false` | Tercera oleada del `WordPopover` (mostrar sinónimos/colocaciones en vivo). |
+
+**Field sources nuevos** (añadidos al union `FieldSource`):
+
+- `ai-definition`, `ai-synonyms`, `ai-collocations`, `ai-nuance`, `ai-register`. Visibles en `CardsTab` con badge fucsia y descripciones específicas.
+
+**Tokens en `chrome.storage.sync`**: la `apiKey` viaja por el mismo store persistido que `googleToken`/`deeplToken`. Nunca se commitea; el `SettingsTab` muestra un warning rojo si el provider está activo pero la key está vacía.
+
+### 9.7 Popover progresivo — 3 oleadas
+
+Nuevo mensaje `RESOLVE_WORD` (`src/shared/messages.ts` + `protocol.d.ts`) que el SW resuelve secuencialmente y devuelve como array `ResolveWordWave[]`:
+
+1. **Oleada local** (`stage: 'local'`): `lookupDictionary(token, sourceLang)` — instantánea, no requiere red.
+2. **Oleada remota** (`stage: 'remote'`): si la oleada local devolvió `null`, se invoca `translateText()` (DeepL/Google/LibreTranslate/offline según settings). Cache hit → ~10 ms; miss → ~200-400 ms.
+3. **Oleada IA** (`stage: 'ai'`): solo si `req.includeAi` es true Y `enrichOnHover` está activo Y `provider !== 'disabled'`. ~800-1500 ms con `gpt-4o-mini`.
+
+El `WordPopover.tsx` consume las olas en orden, renderiza skeletons (`animate-pulse`) mientras espera cada una, y aborta la petición con `AbortController` cuando cambia el cue o el hover se pierde. La oleada local se ejecuta también del lado del cliente (no espera al SW) para que el primer paint sea instantáneo.
+
+### 9.8 Estado de los Bloques 1-4 (post-implementación)
+
+| Bloque | Status | Notas |
+|---|---|---|
+| 1 — AI enrichment provider + cache + onboarding | ✔ | OpenAI/Anthropic/Gemini con prompt compartido, cache TTL configurable, paso opcional en el wizard. |
+| 2 — Popover progresivo de 3 oleadas | ✔ | Skeletons + `AbortController`. La "streaming" se hace via un solo round-trip por simplicidad (waves[]). |
+| 3 — TTS como archivo adjunto | ✔ | OpenAI `tts-1` reusando la `apiKey` del provider IA. Fallback a `{{tts}}` template si no hay provider. |
+| 4 — Whisper glueUrl + docs | ✔ | Defaults vacíos; el usuario debe configurar las URLs. Documentado en este archivo y en `README.md → ASR`. |
 
 ---
 

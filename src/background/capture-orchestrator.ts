@@ -1,6 +1,7 @@
 /// <reference types="chrome" />
 
 import type {
+  AiEnrichment,
   AnkiMapping,
   CaptureSettings,
   CreateCardRequest,
@@ -12,6 +13,8 @@ import { ankiConnect, dataUrlToBase64, type AnkiMedia } from './anki-connect';
 import { translateToken } from './translate';
 import { extractAudioClip, getAudioCaptureStatus } from './audio-capture-manager';
 import { getDB, type PendingNoteRow } from '../shared/db';
+import { enrichWithAi, getAiSettings, getResolvedNativeLang } from './ai-enrich';
+import { generateTtsAudio } from './tts';
 
 interface ResolveContext {
   request: CreateCardRequest;
@@ -20,6 +23,7 @@ interface ResolveContext {
   bilingual: string;
   monolingual: string;
   phonetic: string;
+  ai: AiEnrichment | null;
 }
 
 function safeFilename(base: string, ext: string): string {
@@ -56,7 +60,21 @@ function resolveField(field: string, source: FieldSource, ctx: ResolveContext): 
       if (/mono|definition|definición/.test(f)) return ctx.monolingual;
       return ctx.bilingual || ctx.translation;
     }
+    case 'ai-definition':
+      return ctx.ai?.contextualDefinition ?? '';
+    case 'ai-synonyms':
+      return ctx.ai?.synonyms.join(', ') ?? '';
+    case 'ai-collocations':
+      return ctx.ai?.collocations.join(', ') ?? '';
+    case 'ai-nuance':
+      return ctx.ai?.nuancedTranslation ?? '';
+    case 'ai-register':
+      return ctx.ai?.register ?? '';
     case 'tts':
+      // The wrapper below tries to fill this field with an audio file. If TTS
+      // generation fails we leave the raw text here so Anki can fall back to
+      // its built-in `{{tts <lang>:Field}}` template (configured in the model).
+      return ctx.request.sentence;
     case 'manual':
     case 'frame':
     case 'tabCapture':
@@ -115,6 +133,28 @@ export async function createCardFromRequest(
 ): Promise<CreateCardResponse> {
   const warnings: string[] = [];
   const dictionaryHit = await translateToken(request.token, request.language ?? 'en');
+
+  // Optional AI enrichment — gated by the user's premium settings.
+  let aiData: AiEnrichment | null = null;
+  try {
+    const aiSettings = await getAiSettings();
+    if (aiSettings.enrichOnSave && aiSettings.provider !== 'disabled') {
+      const nativeLang = await getResolvedNativeLang(aiSettings);
+      const result = await enrichWithAi({
+        token: request.token,
+        sentence: request.sentence,
+        sourceLang: request.language ?? 'en',
+        nativeLang,
+        platform: request.platform,
+      });
+      if (result.ok) aiData = result.data;
+      else warnings.push(`IA no respondió: ${result.error}`);
+    }
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : 'AI failure';
+    warnings.push(`IA no respondió: ${reason}`);
+  }
+
   const ctx: ResolveContext = {
     request,
     mapping,
@@ -122,6 +162,7 @@ export async function createCardFromRequest(
     bilingual: dictionaryHit?.bilingual ?? dictionaryHit?.translation ?? '',
     monolingual: dictionaryHit?.monolingual ?? '',
     phonetic: dictionaryHit?.phonetic ?? '',
+    ai: aiData,
   };
 
   const fieldMapping = Object.entries(mapping.fieldSources ?? {});
@@ -153,9 +194,13 @@ export async function createCardFromRequest(
     }
   }
 
-  // Audio — either supplied by content or pulled from the offscreen rolling buffer.
+  // Audio — a field can be sourced from the live tab capture (preferred when
+  // available) or from a remote TTS provider as a fallback.
   const audios: AnkiMedia[] = [];
-  const audioField = fieldMapping.find(([, s]) => s === 'tabCapture' || s === 'tts')?.[0];
+  const tabCaptureField = fieldMapping.find(([, s]) => s === 'tabCapture')?.[0];
+  const ttsField = fieldMapping.find(([, s]) => s === 'tts')?.[0];
+  const audioField = tabCaptureField ?? ttsField;
+  let attachedAudio = false;
   if (audioField) {
     const resolved = await resolveAudio(request, capture);
     if (resolved) {
@@ -171,12 +216,34 @@ export async function createCardFromRequest(
           data: dataUrlToBase64(resolved.dataUrl),
           fields: [audioField],
         });
+        attachedAudio = true;
       } catch (err) {
         const reason = err instanceof Error ? err.message : 'audio';
         warnings.push(`No se pudo guardar el audio: ${reason}`);
       }
-    } else if (getAudioCaptureStatus().active === false) {
+    } else if (tabCaptureField && getAudioCaptureStatus().active === false) {
       warnings.push('La captura de audio no está activa — no se adjuntó audio.');
+    }
+  }
+
+  // TTS field with no live audio — try the OpenAI TTS endpoint. If it works,
+  // attach an MP3 file; otherwise leave the text in the field so Anki's
+  // template `{{tts <lang>:Field}}` can still synthesise on review.
+  if (ttsField && !attachedAudio) {
+    const ttsText = fields[ttsField] || request.sentence;
+    if (ttsText) {
+      try {
+        const tts = await generateTtsAudio(ttsText, request.language ?? 'en');
+        if (tts.ok) {
+          const filename = safeFilename(request.token, extForMime(tts.mime));
+          const data = dataUrlToBase64(tts.dataUrl);
+          await ankiConnect.storeMediaFile(filename, data, mapping.ankiUrl);
+          audios.push({ filename, data, fields: [ttsField] });
+        }
+      } catch (err) {
+        const reason = err instanceof Error ? err.message : 'tts';
+        warnings.push(`TTS no respondió: ${reason}`);
+      }
     }
   }
 

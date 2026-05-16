@@ -41,17 +41,36 @@ function detectSource(fieldName: string): FieldSource {
 }
 
 const SOURCE_META: Record<FieldSource, { label: string; color: string; description: string }> = {
-  selection:  { label: 'Selección',   color: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300',     description: 'Palabra seleccionada' },
-  cue:        { label: 'Subtítulo',   color: 'bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300',                 description: 'Frase del cue activo' },
-  dictionary: { label: 'Diccionario', color: 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300',         description: 'Free Dictionary API' },
-  translate:  { label: 'Traducción',  color: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300', description: 'DeepL / Google' },
-  frame:      { label: 'Frame',       color: 'bg-pink-100 text-pink-700 dark:bg-pink-500/15 dark:text-pink-300',             description: 'Escena limpia + subtítulo' },
-  tabCapture: { label: 'tabCapture',  color: 'bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300',             description: 'Audio de pestaña + VAD' },
-  tts:        { label: 'TTS',         color: 'bg-zinc-200 text-zinc-700 dark:bg-zinc-700 dark:text-zinc-300',                description: 'Text-to-speech fallback' },
-  manual:     { label: 'Manual',      color: 'bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400',                description: 'Lo escribes tú' },
+  selection:        { label: 'Selección',     color: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300',     description: 'Palabra seleccionada' },
+  cue:              { label: 'Subtítulo',     color: 'bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300',                 description: 'Frase del cue activo' },
+  dictionary:       { label: 'Diccionario',   color: 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300',         description: 'Free Dictionary API' },
+  translate:        { label: 'Traducción',    color: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300', description: 'DeepL / Google' },
+  frame:            { label: 'Frame',         color: 'bg-pink-100 text-pink-700 dark:bg-pink-500/15 dark:text-pink-300',             description: 'Escena limpia + subtítulo' },
+  tabCapture:       { label: 'tabCapture',    color: 'bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300',             description: 'Audio de pestaña + VAD' },
+  tts:              { label: 'TTS',           color: 'bg-zinc-200 text-zinc-700 dark:bg-zinc-700 dark:text-zinc-300',                description: 'Text-to-speech fallback' },
+  'ai-definition':  { label: 'IA · Definición',    color: 'bg-fuchsia-100 text-fuchsia-700 dark:bg-fuchsia-500/15 dark:text-fuchsia-300', description: 'Definición contextual generada por IA' },
+  'ai-synonyms':    { label: 'IA · Sinónimos',     color: 'bg-fuchsia-100 text-fuchsia-700 dark:bg-fuchsia-500/15 dark:text-fuchsia-300', description: 'Sinónimos sugeridos por IA' },
+  'ai-collocations':{ label: 'IA · Colocaciones',  color: 'bg-fuchsia-100 text-fuchsia-700 dark:bg-fuchsia-500/15 dark:text-fuchsia-300', description: 'Colocaciones comunes' },
+  'ai-nuance':      { label: 'IA · Matiz',        color: 'bg-fuchsia-100 text-fuchsia-700 dark:bg-fuchsia-500/15 dark:text-fuchsia-300', description: 'Traducción matizada' },
+  'ai-register':    { label: 'IA · Registro',     color: 'bg-fuchsia-100 text-fuchsia-700 dark:bg-fuchsia-500/15 dark:text-fuchsia-300', description: 'Registro (formal / informal / slang)' },
+  manual:           { label: 'Manual',         color: 'bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400',                description: 'Lo escribes tú' },
 };
 
-const SOURCE_OPTIONS: FieldSource[] = ['selection','cue','dictionary','translate','frame','tabCapture','tts','manual'];
+const SOURCE_OPTIONS: FieldSource[] = [
+  'selection',
+  'cue',
+  'dictionary',
+  'translate',
+  'frame',
+  'tabCapture',
+  'tts',
+  'ai-definition',
+  'ai-synonyms',
+  'ai-collocations',
+  'ai-nuance',
+  'ai-register',
+  'manual',
+];
 
 type ConnectionState = 'idle' | 'connecting' | 'connected' | 'error';
 

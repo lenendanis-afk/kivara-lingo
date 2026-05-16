@@ -33,6 +33,10 @@ export const MSG = {
   TRANSLATE: 'TRANSLATE',
   /** any → background: speak a single word via chrome.tts */
   TTS_SPEAK: 'TTS_SPEAK',
+  /** content → background: enrich a token with an AI provider (premium) */
+  AI_ENRICH: 'AI_ENRICH',
+  /** content → background: 3-wave resolution (local dict, remote translate, AI) */
+  RESOLVE_WORD: 'RESOLVE_WORD',
   /** chrome.runtime.sendMessage payloads */
   TOGGLE_PANEL: 'TOGGLE_PANEL',
   RUN_COMMAND: 'RUN_COMMAND',

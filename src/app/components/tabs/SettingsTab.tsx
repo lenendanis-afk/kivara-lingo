@@ -1,15 +1,15 @@
 import React, { useState } from 'react';
 import {
   Keyboard, EyeOff, ChevronDown, Mic, Image as ImageIcon, Wand2,
-  SlidersHorizontal, BookOpen, Languages, Volume2,
+  SlidersHorizontal, BookOpen, Languages, Volume2, Sparkles,
 } from 'lucide-react';
 import { useKivaraStore } from '../../../shared/store';
-import type { TranslateProvider } from '../../../shared/types';
+import type { AiProvider, TranslateProvider } from '../../../shared/types';
 
 export function SettingsTab() {
   const {
     capture, setCapture, cleanup, setCleanup, mode, setMode,
-    translate, setTranslate, asr, setAsr,
+    translate, setTranslate, asr, setAsr, ai, setAi,
   } = useKivaraStore();
   const [showAdvanced, setShowAdvanced] = useState(false);
 
@@ -194,6 +194,88 @@ export function SettingsTab() {
           <p className="text-[10px] text-zinc-500 dark:text-zinc-500 leading-snug -mt-0.5">
             El diccionario offline siempre se consulta primero. Los proveedores externos solo se usan si la palabra no aparece allí, y las respuestas se cachean en IndexedDB.
           </p>
+        </Section>
+
+        {/* IA (premium) */}
+        <Section
+          icon={<Sparkles size={10} />}
+          title="IA (premium)"
+          headerRight={
+            <span className="text-[10px] font-medium text-zinc-500 dark:text-zinc-500 normal-case tracking-normal">
+              {ai.provider === 'disabled' ? 'off' : ai.provider}
+            </span>
+          }
+        >
+          <Row label="Proveedor">
+            <select
+              value={ai.provider}
+              onChange={(e) => setAi({ ...ai, provider: e.target.value as AiProvider })}
+              className="sl-select w-full text-[11px] px-2 py-1 rounded border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-200"
+            >
+              <option value="disabled">Desactivado</option>
+              <option value="openai">OpenAI</option>
+              <option value="anthropic">Anthropic</option>
+              <option value="google-ai">Google Gemini</option>
+            </select>
+          </Row>
+          {ai.provider !== 'disabled' && (
+            <>
+              <Row label="API key">
+                <input
+                  type="password"
+                  value={ai.apiKey}
+                  onChange={(e) => setAi({ ...ai, apiKey: e.target.value })}
+                  placeholder="sk-... / Anthropic / Gemini API key"
+                  className="sl-input w-full text-[11px] px-2 py-1 rounded border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-200"
+                />
+              </Row>
+              <Row label="Modelo">
+                <input
+                  type="text"
+                  value={ai.model}
+                  onChange={(e) => setAi({ ...ai, model: e.target.value })}
+                  placeholder={
+                    ai.provider === 'openai' ? 'gpt-4o-mini'
+                    : ai.provider === 'anthropic' ? 'claude-3-5-haiku-latest'
+                    : 'gemini-1.5-flash'
+                  }
+                  className="sl-input w-full text-[11px] px-2 py-1 rounded border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-200"
+                />
+              </Row>
+              <Row label="Idioma nativo (opcional)">
+                <input
+                  type="text"
+                  value={ai.nativeLanguage ?? ''}
+                  onChange={(e) => setAi({ ...ai, nativeLanguage: e.target.value.trim() || undefined })}
+                  placeholder={`(usa ${translate.targetLanguage})`}
+                  className="sl-input w-full text-[11px] px-2 py-1 rounded border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-200"
+                />
+              </Row>
+              <Row label="Enriquecer al guardar">
+                <Toggle on={ai.enrichOnSave} onChange={(v) => setAi({ ...ai, enrichOnSave: v })} />
+              </Row>
+              <Row label="Enriquecer en hover">
+                <Toggle on={ai.enrichOnHover} onChange={(v) => setAi({ ...ai, enrichOnHover: v })} />
+              </Row>
+              <Row label="Caché (días)" value={`${ai.cacheTtlDays}d`}>
+                <input
+                  type="range" min={1} max={90} step={1} value={ai.cacheTtlDays}
+                  onChange={(e) => setAi({ ...ai, cacheTtlDays: Number(e.target.value) })}
+                  className="sl-range w-full"
+                />
+              </Row>
+              {!ai.apiKey && (
+                <p className="text-[10px] text-red-600 dark:text-red-400 leading-snug -mt-0.5">
+                  Falta la API key — las llamadas IA se omitirán hasta que la añadas.
+                </p>
+              )}
+              <p className="text-[10px] text-zinc-500 dark:text-zinc-500 leading-snug -mt-0.5">
+                Las respuestas se cachean en IndexedDB con TTL configurable. El proveedor recibe
+                la palabra y la frase del cue; sin tracking adicional. OpenAI tts-1 (audio) cuesta
+                ~USD 0.015 / 1 000 caracteres.
+              </p>
+            </>
+          )}
         </Section>
 
         {/* ASR */}
