@@ -80,16 +80,27 @@ export function SubtitleOverlay({
   }, [isHovered, hoveredId, onTokenHoverChange]);
 
   useEffect(() => {
+    // We only handle the Alt key when it would do something useful — i.e.,
+    // the user is currently hovering a phrase-MWE token and wants to expand
+    // it. In every other case we let Alt pass through so the platform
+    // (Alt+Tab, browser menu activation, Alt+arrow seek shortcuts, etc.)
+    // keeps working. Previously we blanket-prevented every Alt keypress.
     const down = (e: KeyboardEvent) => {
       if (e.key !== 'Alt') return;
-      e.preventDefault();
       const hk = hoveredKeyRef.current;
-      if (hk && lookupDictionary(hk)?.type === 'phrase') setAltExpandedKey(hk);
+      if (!hk || lookupDictionary(hk)?.type !== 'phrase') return;
+      e.preventDefault();
+      setAltExpandedKey(hk);
     };
     const up = (e: KeyboardEvent) => {
-      if (e.key !== 'Alt' && e.altKey) return;
-      if (e.key === 'Alt') e.preventDefault();
-      setAltExpandedKey(null);
+      if (e.key !== 'Alt') return;
+      // Only swallow the keyup when we're actually closing the expansion —
+      // otherwise let the platform see the release (some players bind Alt
+      // for momentary actions).
+      setAltExpandedKey((prev) => {
+        if (prev !== null) e.preventDefault();
+        return null;
+      });
     };
     const blur = () => setAltExpandedKey(null);
     const visibility = () => {
