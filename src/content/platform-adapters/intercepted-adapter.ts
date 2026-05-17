@@ -5,7 +5,12 @@
  * CSS used to hide the native subtitles. The cue data itself comes from the
  * MAIN-world interceptor via `intercepted-bus`.
  */
-import { onTrack, type InterceptedTrack } from './intercepted-bus';
+import {
+  getKnownLanguages,
+  getTrackByLanguage,
+  onTrack,
+  type InterceptedTrack,
+} from './intercepted-bus';
 import type { CueListener, SubtitleCue, SubtitleSource } from './types';
 
 export interface InterceptedAdapterOptions {
@@ -88,8 +93,25 @@ export function createInterceptedAdapter(opts: InterceptedAdapterOptions): Subti
     }
   }
 
-  // Subscribe to intercepted tracks (replays last one if already seen)
+  // Primary language for the adapter (just the two-letter subtag).
+  const primaryLang = opts.language.split(/[-_]/)[0].toLowerCase();
+
+  // Subscribe to intercepted tracks (replays last one if already seen).
+  // Only adopt a track as the *primary* (source) caption when its detected
+  // language matches `opts.language` — or when the language is unknown
+  // (legacy interceptors don't tag language). Tracks for other languages
+  // (e.g. the native ES dual caption) live on the bus and are pulled via
+  // `getAltCueAt(...)` without disturbing the active source caption.
   onTrack((next) => {
+    const nextLang = next.language?.split(/[-_]/)[0].toLowerCase() ?? null;
+    if (nextLang && nextLang !== primaryLang) {
+      // Track for a *different* language — keep the bus copy for the alt
+      // cue lookup, but don't replace our source captions. Polling stays
+      // alive so when (and if) a matching primary track arrives later we
+      // pick it up immediately.
+      startPolling();
+      return;
+    }
     track = next;
     tick();
     startPolling();
@@ -135,6 +157,25 @@ export function createInterceptedAdapter(opts: InterceptedAdapterOptions): Subti
         hideStyle = null;
       }
       stopPolling();
+    },
+    getAltCueAt(timeMs, lang) {
+      const altTrack = getTrackByLanguage(lang);
+      if (!altTrack) return null;
+      // Skip when the alt track *is* the active track (same URL) — that
+      // would just mirror the source caption back, defeating the purpose.
+      if (track && altTrack.url === track.url) return null;
+      const hit = altTrack.cues.find((c) => timeMs >= c.start && timeMs <= c.end);
+      if (!hit) return null;
+      return {
+        id: `${opts.platform}-alt-${lang}-${hit.start}-${hit.end}`,
+        start: hit.start,
+        end: hit.end,
+        text: hit.text,
+        language: altTrack.language ?? lang,
+      };
+    },
+    getAvailableAltLanguages() {
+      return getKnownLanguages();
     },
   };
 }

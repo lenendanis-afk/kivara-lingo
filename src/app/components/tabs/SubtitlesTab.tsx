@@ -79,10 +79,10 @@ export function SubtitlesTab({ styles, setStyles }: SubtitlesTabProps) {
                 <button
                   key={color}
                   onClick={() => updateStyle('color', color)}
-                  className={`w-6 h-6 rounded-full border-2 transition-transform ring-1 ring-inset ${
+                  className={`w-6 h-6 rounded-full border-2 transition-transform ring-2 ring-inset ${
                     styles.color === color
                       ? 'border-indigo-500 dark:border-indigo-400 ring-indigo-500/30 dark:ring-indigo-400/30 scale-110'
-                      : 'border-zinc-300 dark:border-zinc-500 ring-zinc-500/20 dark:ring-zinc-400/20 hover:border-zinc-400 dark:hover:border-zinc-400'
+                      : 'border-zinc-400 dark:border-zinc-300 ring-zinc-500/30 dark:ring-white/25 hover:border-zinc-500 dark:hover:border-white'
                   }`}
                   style={{ backgroundColor: color }}
                   aria-label={`Color ${color}`}
@@ -119,10 +119,10 @@ export function SubtitlesTab({ styles, setStyles }: SubtitlesTabProps) {
                 <button
                   key={color}
                   onClick={() => updateStyle('backgroundColor', color)}
-                  className={`w-6 h-6 rounded-full border-2 transition-transform ring-1 ring-inset ${
+                  className={`w-6 h-6 rounded-full border-2 transition-transform ring-2 ring-inset ${
                     styles.backgroundColor === color
                       ? 'border-indigo-500 dark:border-indigo-400 ring-indigo-500/30 dark:ring-indigo-400/30 scale-110'
-                      : 'border-zinc-300 dark:border-zinc-500 ring-zinc-500/20 dark:ring-zinc-400/20 hover:border-zinc-400 dark:hover:border-zinc-400'
+                      : 'border-zinc-400 dark:border-zinc-300 ring-zinc-500/30 dark:ring-white/25 hover:border-zinc-500 dark:hover:border-white'
                   }`}
                   style={{ backgroundColor: color }}
                   aria-label={`Fondo ${color}`}

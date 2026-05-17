@@ -366,7 +366,7 @@ export function WordPopover({
           )}
           {meta.monolingual && (
             <div className="text-[11px] text-zinc-400 italic leading-snug border-l-2 border-zinc-700 pl-2 mt-1.5 normal-case">
-              "{meta.monolingual}"
+              {meta.monolingual}
             </div>
           )}
           {meta.examples && meta.examples.length > 0 && (
@@ -388,13 +388,19 @@ export function WordPopover({
           )}
           {/* Provider attribution — same pattern Trancy/Language Reactor use.
               Helps the user understand whether they're seeing a dictionary
-              entry, a free-tier API response, or a premium one. */}
-          {(resolved.source || meta.source) && (
-            <div className="text-[9px] uppercase tracking-wider text-zinc-500 normal-case pt-0.5">
-              <span className="text-zinc-600">via </span>
-              {formatSource(resolved.source ?? meta.source ?? null)}
-            </div>
-          )}
+              entry, a free-tier API response, or a premium one. The local
+              offline dictionary is the silent default — only call out
+              non-trivial sources (remote providers / caches / packs). */}
+          {(() => {
+            const src = resolved.source ?? meta.source ?? null;
+            if (!src || src === 'dictionary') return null;
+            return (
+              <div className="text-[9px] uppercase tracking-wider text-zinc-500 normal-case pt-0.5">
+                <span className="text-zinc-600">via </span>
+                {formatSource(src)}
+              </div>
+            );
+          })()}
         </div>
 
         {/* Wave 3 — AI enrichment (synonyms / collocations / register). */}

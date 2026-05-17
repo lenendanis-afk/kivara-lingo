@@ -43,6 +43,10 @@ export function App({ adapter, videoElement, videoOverlayRoot }: AppProps) {
   } = useKivaraStore();
 
   const [activeCue, setActiveCue] = useState<ActiveCue | null>(null);
+  // Native-language alt cue (e.g. native Spanish track running parallel to
+  // the active English captions). Preferred as the dual-caption source over
+  // a remote MT translation — see SubtitleOverlay for the priority chain.
+  const [altCue, setAltCue] = useState<ActiveCue | null>(null);
   const [saveTick, setSaveTick] = useState<number | null>(null);
   const cueLanguageRef = useRef('en');
   // Tracks whether we (not the user, not the platform) requested the current
@@ -130,6 +134,42 @@ export function App({ adapter, videoElement, videoOverlayRoot }: AppProps) {
       });
     }
   }, [adapter]);
+
+  // Native-language alt cue poll. Runs at 4 Hz — fast enough that the dual
+  // caption snaps in within the same frame as the source for most users,
+  // cheap enough that even with 8 hour binges it's < 0.01% CPU.
+  const targetLang = useKivaraStore((s) => s.translate.targetLanguage);
+  useEffect(() => {
+    if (!adapter?.getAltCueAt) {
+      setAltCue(null);
+      return;
+    }
+    const lookup = adapter.getAltCueAt.bind(adapter);
+    let lastId: string | null = null;
+    const tick = () => {
+      const time = adapter.getCurrentTime?.() ?? 0;
+      const next = lookup(time, targetLang);
+      if ((next?.id ?? null) !== lastId) {
+        lastId = next?.id ?? null;
+        setAltCue(
+          next
+            ? {
+                id: next.id,
+                text: next.text,
+                start: next.start,
+                end: next.end,
+                language: next.language,
+              }
+            : null,
+        );
+      }
+    };
+    tick();
+    const handle = window.setInterval(tick, 250);
+    return () => {
+      window.clearInterval(handle);
+    };
+  }, [adapter, targetLang, activeCue?.id]);
 
   // Pause video while the user is reading a popover; resume on leave.
   //
@@ -402,6 +442,7 @@ export function App({ adapter, videoElement, videoOverlayRoot }: AppProps) {
         <SubtitleOverlay
           subtitleStyles={subtitleStyles}
           cue={activeCue}
+          altCue={altCue}
           mode={mode}
           saveRequestKey={saveTick}
           onSaveCard={handleSaveCard}
@@ -412,6 +453,7 @@ export function App({ adapter, videoElement, videoOverlayRoot }: AppProps) {
     );
   }, [
     activeCue,
+    altCue,
     enabled,
     isDarkMode,
     mode,

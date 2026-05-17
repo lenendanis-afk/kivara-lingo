@@ -255,7 +255,7 @@ export function CardsTab({ mapping, setMapping, mockData }: CardsTabProps) {
             </select>
           </Row>
 
-          <Row label={<span className="flex items-center gap-1"><FileText size={10} className="text-zinc-400" />Note type</span>}>
+          <Row label={<span className="flex items-center gap-1"><FileText size={10} className="text-zinc-400" />Tipo de nota</span>}>
             <select
               value={mapping.modelName}
               onChange={(e) => setMapping({ ...mapping, modelName: e.target.value, fieldSources: {} })}
