@@ -52,6 +52,12 @@ export function App({ adapter, videoElement, videoOverlayRoot }: AppProps) {
   // Most-recent hover-change request. Used by the resume watchdog so we don't
   // resume mid-flight if a new hover starts within a couple of ms.
   const hoverRevRef = useRef(0);
+  // True while the cursor is over ANY part of the Kivara overlay (subtitle
+  // box, popover, hover bridge). Driven by a global capture-phase
+  // `mousemove` listener so we don't depend on React's onMouseLeave chain,
+  // which on platforms like HBO Max can lose track when the popover paints
+  // outside the parent's bounding box.
+  const cursorOverKivaraRef = useRef(false);
 
   // Apply the "Limpieza visual" CSS whenever the toggles change. The CSS is
   // platform-aware (the matching selectors live in cleanup-css.ts) so the
@@ -206,6 +212,92 @@ export function App({ adapter, videoElement, videoOverlayRoot }: AppProps) {
     };
   }, [videoElement]);
 
+  // Global mousemove watchdog. The React onMouseLeave chain works in 99% of
+  // cases but on HBO Max (and any platform where the popover paints above a
+  // controls layer that intercepts events) it can drop the leave event
+  // entirely — leaving the video stuck paused. This watchdog is a defensive
+  // net: it tracks whether the cursor is over any element marked with
+  // `data-kivara-hover-zone="true"` (set on the subtitle and on each popover)
+  // and, every ~350 ms, resumes the video if we ourselves paused it and the
+  // cursor is no longer over any of our zones.
+  useEffect(() => {
+    if (!videoElement) return;
+
+    const isOverKivara = (e: MouseEvent): boolean => {
+      const path = (e.composedPath?.() ?? []) as EventTarget[];
+      for (const node of path) {
+        if (
+          node instanceof HTMLElement &&
+          node.dataset?.kivaraHoverZone === 'true'
+        ) {
+          return true;
+        }
+      }
+      return false;
+    };
+
+    const onMove = (e: MouseEvent) => {
+      cursorOverKivaraRef.current = isOverKivara(e);
+    };
+    const onLeaveWindow = () => {
+      cursorOverKivaraRef.current = false;
+    };
+    // Capture-phase mousemove so we see the event even if some descendant
+    // calls stopPropagation (HBO's player wrapper sometimes does).
+    document.addEventListener('mousemove', onMove, { capture: true });
+    document.addEventListener('mouseleave', onLeaveWindow);
+    window.addEventListener('blur', onLeaveWindow);
+
+    const tickResume = () => {
+      if (!kivaraPausedRef.current) return;
+      if (!videoElement) return;
+      if (!videoElement.paused) {
+        kivaraPausedRef.current = false;
+        return;
+      }
+      if (cursorOverKivaraRef.current) return;
+      // Stuck paused with no hover — resume.
+      hoverRevRef.current += 1;
+      const rev = hoverRevRef.current;
+      let attempts = 0;
+      const tryPlay = () => {
+        if (hoverRevRef.current !== rev) return;
+        if (!videoElement || !videoElement.paused) {
+          kivaraPausedRef.current = false;
+          return;
+        }
+        attempts += 1;
+        const p = videoElement.play();
+        if (p && typeof p.then === 'function') {
+          p.then(() => {
+            kivaraPausedRef.current = false;
+          }).catch((err) => {
+            if (attempts < 3 && hoverRevRef.current === rev) {
+              setTimeout(tryPlay, 120);
+            } else {
+              console.warn(
+                '[Kivara Lingo] watchdog could not resume video',
+                err,
+              );
+              kivaraPausedRef.current = false;
+            }
+          });
+        } else {
+          kivaraPausedRef.current = false;
+        }
+      };
+      tryPlay();
+    };
+    const interval = window.setInterval(tickResume, 350);
+
+    return () => {
+      document.removeEventListener('mousemove', onMove, { capture: true });
+      document.removeEventListener('mouseleave', onLeaveWindow);
+      window.removeEventListener('blur', onLeaveWindow);
+      window.clearInterval(interval);
+    };
+  }, [videoElement]);
+
   // Bridge runtime messages (from background) → local actions.
   useEffect(() => {
     const handler = (msg: { type?: string; command?: string }) => {
@@ -347,11 +439,11 @@ export function App({ adapter, videoElement, videoOverlayRoot }: AppProps) {
             position: 'absolute',
             top: 0,
             right: 0,
-            // Leave a small inset at the bottom in dock-to-side mode so the
-            // panel never sits flush against the OS taskbar / browser chrome,
-            // which would otherwise overlap the last row of every tab.
+            // Snap to the bottom of the viewport in dock-to-side mode so the
+            // panel docks flush with the platform's UI (no leftover gap of
+            // the platform's video peeking through).
             // Popup mode positions itself with `top-24` so this doesn't apply.
-            bottom: isPopupMode ? 0 : 12,
+            bottom: 0,
             display: 'flex',
             alignItems: 'stretch',
           }}

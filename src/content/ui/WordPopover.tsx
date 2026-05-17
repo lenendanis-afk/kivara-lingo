@@ -265,6 +265,7 @@ export function WordPopover({
     <div
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
+      data-kivara-hover-zone="true"
       className="absolute left-1/2 -translate-x-1/2 bottom-full mb-3 z-30"
       style={{
         pointerEvents: 'auto',

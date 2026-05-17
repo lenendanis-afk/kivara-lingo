@@ -253,6 +253,7 @@ export function SubtitleOverlay({
         className="relative flex flex-col items-center pointer-events-auto select-text"
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
+        data-kivara-hover-zone="true"
       >
         <div className="absolute -top-14 w-full h-14 bg-transparent z-0" />
 

@@ -35,10 +35,10 @@ export function SubtitlesTab({ styles, setStyles }: SubtitlesTabProps) {
 
   return (
     <div className="h-full min-h-0 overflow-y-auto bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100">
-      {/* `pb-12` reserves enough scroll room so the last "Altura" slider stays
-          fully readable even when the OS taskbar (or browser chrome in
-          dock-to-side mode) overlaps the bottom of the panel. */}
-      <div className="p-3 pb-12 space-y-3">
+      {/* `pb-6` is enough scroll room when the panel snaps to the viewport
+          bottom (no taskbar overlap). Previously `pb-12` left a visible
+          empty zinc-950 strip below the last section. */}
+      <div className="p-3 pb-6 space-y-3">
 
         {/* Header bar with reset */}
         <div className="flex items-center justify-between px-0.5">
@@ -79,8 +79,14 @@ export function SubtitlesTab({ styles, setStyles }: SubtitlesTabProps) {
                 <button
                   key={color}
                   onClick={() => updateStyle('color', color)}
-                  className={`w-6 h-6 rounded-full border-2 transition-transform ${styles.color === color ? 'border-indigo-500 dark:border-indigo-400 scale-110' : 'border-zinc-200 dark:border-zinc-700'}`}
+                  className={`w-6 h-6 rounded-full border-2 transition-transform ring-1 ring-inset ${
+                    styles.color === color
+                      ? 'border-indigo-500 dark:border-indigo-400 ring-indigo-500/30 dark:ring-indigo-400/30 scale-110'
+                      : 'border-zinc-300 dark:border-zinc-500 ring-zinc-500/20 dark:ring-zinc-400/20 hover:border-zinc-400 dark:hover:border-zinc-400'
+                  }`}
                   style={{ backgroundColor: color }}
+                  aria-label={`Color ${color}`}
+                  title={color}
                 />
               ))}
             </div>
@@ -113,8 +119,14 @@ export function SubtitlesTab({ styles, setStyles }: SubtitlesTabProps) {
                 <button
                   key={color}
                   onClick={() => updateStyle('backgroundColor', color)}
-                  className={`w-6 h-6 rounded-full border-2 transition-transform ${styles.backgroundColor === color ? 'border-indigo-500 dark:border-indigo-400 scale-110' : 'border-zinc-200 dark:border-zinc-700'}`}
+                  className={`w-6 h-6 rounded-full border-2 transition-transform ring-1 ring-inset ${
+                    styles.backgroundColor === color
+                      ? 'border-indigo-500 dark:border-indigo-400 ring-indigo-500/30 dark:ring-indigo-400/30 scale-110'
+                      : 'border-zinc-300 dark:border-zinc-500 ring-zinc-500/20 dark:ring-zinc-400/20 hover:border-zinc-400 dark:hover:border-zinc-400'
+                  }`}
                   style={{ backgroundColor: color }}
+                  aria-label={`Fondo ${color}`}
+                  title={color}
                 />
               ))}
             </div>
