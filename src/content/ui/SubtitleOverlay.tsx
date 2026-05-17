@@ -434,6 +434,7 @@ export function SubtitleOverlay({
               ))}
             </div>
           ) : (
+            <>
             <div className="flex flex-col" style={{ alignItems: flexJustify }}>
               {lineTokens.map((tokens, li) => (
                 <div key={li} className="block">
@@ -575,48 +576,49 @@ export function SubtitleOverlay({
                 </div>
               ))}
             </div>
+
+            {/* Dual caption — native-language full sentence under the
+                source. Lives INSIDE the source plate (same container as
+                the English tokens above) so both lines share one rounded
+                box, matching the original Figma Make mock. The line
+                animates via max-height + opacity so when it's hidden it
+                takes ZERO vertical space — fixing the "jump up by a few
+                pixels when the bilingual line fades in" bug. Prefers the
+                platform's own native track over an MT round-trip; the
+                source is exposed via the `title` tooltip. */}
+            {showDualSubtitle && dualCaptionText && (
+              <div
+                data-kivara-hover-zone="true"
+                className={`mt-2 transition-all duration-300 ease-out overflow-hidden ${
+                  isHovered ? 'max-h-32 opacity-100' : 'max-h-0 opacity-0'
+                }`}
+                title={
+                  dualCaptionSource === 'native'
+                    ? 'Subtítulo nativo de la plataforma'
+                    : 'Traducción automática'
+                }
+                style={{
+                  textAlign: textAlignment,
+                }}
+                aria-hidden={!isHovered}
+              >
+                <span
+                  className="text-zinc-300"
+                  style={{
+                    // 0.65em from the mock — the bilingual line scales
+                    // with the user's source font-size automatically.
+                    fontSize: '0.65em',
+                    fontWeight: 500,
+                    letterSpacing: '0.025em',
+                  }}
+                >
+                  {dualCaptionText}
+                </span>
+              </div>
+            )}
+            </>
           )}
         </div>
-
-        {/* Dual caption — native-language full sentence under the source.
-            Prefers the platform's own subtitle track (when available) over
-            an MT round-trip. Visual style matches the original Figma Make
-            mock (font-medium, tracking-wide, fixed semi-black plate, no
-            italic) and only appears when the source caption is hovered —
-            previously it was permanently visible which clashed with the
-            cleaner mock behaviour. We always render the node so the fade-in
-            animation works; visibility is gated via opacity + pointer-events. */}
-        {showDualSubtitle && dualCaptionText && !isReading && (
-          <div
-            data-kivara-hover-zone="true"
-            className={`mt-2 select-text transition-all duration-200 ease-out ${
-              isHovered
-                ? 'opacity-100 translate-y-0'
-                : 'opacity-0 translate-y-1 pointer-events-none'
-            }`}
-            title={
-              dualCaptionSource === 'native'
-                ? 'Subtítulo nativo de la plataforma'
-                : 'Traducción automática'
-            }
-            style={{
-              // text-xl in the mock (~20px). We anchor on the user's source
-              // font-size so the bilingual line scales with it; min 14px so
-              // it stays legible at the smallest source sizes.
-              fontSize: `${Math.max(14, Math.round(subtitleStyles.fontSize * 0.6))}px`,
-              fontWeight: 500,
-              letterSpacing: '0.025em',
-              color: '#e5e7eb',
-              backgroundColor: 'rgba(0,0,0,0.5)',
-              padding: '2px 12px',
-              borderRadius: '6px',
-              textShadow: '0 2px 8px rgba(0,0,0,0.9)',
-              textAlign: textAlignment,
-            }}
-          >
-            {dualCaptionText}
-          </div>
-        )}
       </div>
     </div>
   );
