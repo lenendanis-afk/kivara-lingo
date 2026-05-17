@@ -30,24 +30,38 @@ const FALLBACK_FIELDS: Record<string, string[]> = {
 
 function detectSource(fieldName: string): FieldSource {
   const n = fieldName.toLowerCase().trim();
-  if (/audio/.test(n)) return /sentence|frase|cue/.test(n) ? 'tabCapture' : 'dictionary';
+  // Audio first — most specific.
+  if (/audio/.test(n)) {
+    if (/word|palabra|term/.test(n)) return 'word-audio';
+    return 'sentence-audio'; // default: cue/sentence audio
+  }
   if (/picture|image|imagen|frame|screenshot/.test(n)) return 'frame';
-  if (/phon|ipa|pronun/.test(n)) return 'dictionary';
-  if (/translation|traduccion|traducción|native|spanish|español/.test(n)) return 'translate';
-  if (/bilingual|monolingual|definition|definición|meaning|sentido/.test(n)) return 'dictionary';
+  if (/phon|ipa|pronun/.test(n)) return 'phonetic';
+  if (/monoling|definition|definición|meaning|sentido/.test(n)) return 'monolingual';
+  if (/biling/.test(n)) return 'bilingual';
+  if (/example|ejemplo/.test(n)) return 'examples';
+  if (/translation|traduccion|traducción|native|spanish|español/.test(n)) return 'translation';
   if (/sentence|frase|context|cue|reverso|extra/.test(n)) return 'cue';
   if (/word|palabra|term|anverso|texto|front/.test(n)) return 'selection';
   return 'manual';
 }
 
 const SOURCE_META: Record<FieldSource, { label: string; color: string; description: string }> = {
-  selection:        { label: 'Selección',     color: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300',     description: 'Palabra seleccionada' },
-  cue:              { label: 'Subtítulo',     color: 'bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300',                 description: 'Frase del cue activo' },
-  dictionary:       { label: 'Diccionario',   color: 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300',         description: 'Free Dictionary API' },
-  translate:        { label: 'Traducción',    color: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300', description: 'DeepL / Google' },
-  frame:            { label: 'Frame',         color: 'bg-pink-100 text-pink-700 dark:bg-pink-500/15 dark:text-pink-300',             description: 'Escena limpia + subtítulo' },
-  tabCapture:       { label: 'tabCapture',    color: 'bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300',             description: 'Audio de pestaña + VAD' },
-  tts:              { label: 'TTS',           color: 'bg-zinc-200 text-zinc-700 dark:bg-zinc-700 dark:text-zinc-300',                description: 'Text-to-speech fallback' },
+  selection:        { label: 'Palabra',       color: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300',     description: 'Palabra seleccionada (el headword)' },
+  cue:              { label: 'Frase',         color: 'bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300',                 description: 'Frase completa del cue activo' },
+  phonetic:         { label: 'Fonética',      color: 'bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300',     description: 'IPA del diccionario' },
+  translation:      { label: 'Traducción',    color: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300', description: 'Traducción corta (dict + cadena)' },
+  bilingual:        { label: 'Bilingüe',      color: 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300',         description: 'Gram-cat + definición bilingüe' },
+  monolingual:      { label: 'Monolingüe',    color: 'bg-orange-100 text-orange-700 dark:bg-orange-500/15 dark:text-orange-300',     description: 'Definición en idioma fuente' },
+  examples:         { label: 'Ejemplos',      color: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-500/15 dark:text-yellow-300',     description: 'Ejemplos del diccionario' },
+  frame:            { label: 'Picture',       color: 'bg-pink-100 text-pink-700 dark:bg-pink-500/15 dark:text-pink-300',             description: 'Screenshot del frame del cue' },
+  'sentence-audio': { label: 'Sentence audio',color: 'bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300',             description: 'Audio capturado de la pestaña (cue)' },
+  'word-audio':     { label: 'Word audio',    color: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-500/15 dark:text-cyan-300',             description: 'TTS solo de la palabra' },
+  // Deprecated / backward-compatible labels.
+  dictionary:       { label: 'Diccionario',   color: 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300',         description: '(legacy) catch-all del diccionario' },
+  translate:        { label: 'Traducir',      color: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300', description: '(legacy) cadena de traductores' },
+  tabCapture:       { label: 'tabCapture',    color: 'bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300',             description: '(legacy) Audio de pestaña' },
+  tts:              { label: 'TTS',           color: 'bg-zinc-200 text-zinc-700 dark:bg-zinc-700 dark:text-zinc-300',                description: '(legacy) Text-to-speech' },
   'ai-definition':  { label: 'IA · Definición',    color: 'bg-fuchsia-100 text-fuchsia-700 dark:bg-fuchsia-500/15 dark:text-fuchsia-300', description: 'Definición contextual generada por IA' },
   'ai-synonyms':    { label: 'IA · Sinónimos',     color: 'bg-fuchsia-100 text-fuchsia-700 dark:bg-fuchsia-500/15 dark:text-fuchsia-300', description: 'Sinónimos sugeridos por IA' },
   'ai-collocations':{ label: 'IA · Colocaciones',  color: 'bg-fuchsia-100 text-fuchsia-700 dark:bg-fuchsia-500/15 dark:text-fuchsia-300', description: 'Colocaciones comunes' },
@@ -59,11 +73,14 @@ const SOURCE_META: Record<FieldSource, { label: string; color: string; descripti
 const SOURCE_OPTIONS: FieldSource[] = [
   'selection',
   'cue',
-  'dictionary',
-  'translate',
+  'phonetic',
+  'translation',
+  'bilingual',
+  'monolingual',
+  'examples',
   'frame',
-  'tabCapture',
-  'tts',
+  'sentence-audio',
+  'word-audio',
   'ai-definition',
   'ai-synonyms',
   'ai-collocations',

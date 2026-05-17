@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import { sendMessage } from 'webext-bridge/content-script';
 import { Volume1, Copy, Check, Quote, AudioLines, Camera } from 'lucide-react';
-import type { SubtitleStyles, Mode } from '../../shared/types';
+import type { SubtitleStyles, Mode, TranslateResponse } from '../../shared/types';
 import { tokenizeSentence } from '../nlp/tokenize';
 import { lookupDictionary } from '../nlp/dictionary';
 import { useKivaraStore } from '../../shared/store';
@@ -94,6 +95,52 @@ export function SubtitleOverlay({
   const includeAi = useKivaraStore(
     (s) => s.ai.provider !== 'disabled' && !!s.ai.apiKey && s.ai.enrichOnHover,
   );
+  const showDualSubtitle = useKivaraStore((s) => s.translate.showDualSubtitle);
+  const nativeLanguage = useKivaraStore((s) => s.translate.targetLanguage || 'es');
+
+  // Dual caption — translate the whole cue text to the native language and
+  // render it under the source subtitle. The translation is cached by the
+  // background's Dexie cache so re-displaying the same cue is instant.
+  const [translatedSentence, setTranslatedSentence] = useState<string | null>(null);
+  useEffect(() => {
+    if (!showDualSubtitle) {
+      setTranslatedSentence(null);
+      return;
+    }
+    const src = targetSentence.trim();
+    if (!src) {
+      setTranslatedSentence(null);
+      return;
+    }
+    // Skip if source language equals target language (no-op).
+    if ((cueLanguage || 'en').slice(0, 2) === nativeLanguage.slice(0, 2)) {
+      setTranslatedSentence(null);
+      return;
+    }
+    let cancelled = false;
+    setTranslatedSentence(null);
+    const t = setTimeout(() => {
+      sendMessage(
+        'TRANSLATE',
+        { text: src, sourceLang: cueLanguage || 'en', targetLang: nativeLanguage },
+        'background',
+      )
+        .then((res) => {
+          if (cancelled) return;
+          const r = res as TranslateResponse;
+          if (r?.ok && r.translatedText && r.translatedText.trim() !== src) {
+            setTranslatedSentence(r.translatedText);
+          }
+        })
+        .catch(() => {
+          /* network errors are non-fatal — just hide the second line */
+        });
+    }, 120);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [targetSentence, cueLanguage, nativeLanguage, showDualSubtitle]);
 
   const tokens = useMemo(
     () => tokenizeSentence(targetSentence, effectiveExpanded, cueLanguage),
@@ -408,6 +455,34 @@ export function SubtitleOverlay({
             </span>
           )}
         </div>
+
+        {/* Dual caption — native-language full sentence under the source.
+            Renders only when the source language differs from the user's
+            native language and the cache/translator returned something
+            different from the input. Sits inside the same pointer-events
+            container so hovering it also pauses the video, just like the
+            source line. */}
+        {showDualSubtitle && translatedSentence && !isReading && (
+          <div
+            className="text-center rounded-md px-4 py-1 mt-1 select-text"
+            style={{
+              fontSize: `${Math.max(12, subtitleStyles.fontSize - 4)}px`,
+              color: '#d4d4d8',
+              backgroundColor: backgroundColorWithOpacity,
+              fontWeight: 400,
+              fontStyle: 'italic',
+              textShadow: (() => {
+                const s = subtitleStyles.textShadow;
+                if (s <= 0) return 'none';
+                const a = (s / 100).toFixed(2);
+                const blur = Math.max(2, Math.round(s / 18));
+                return `2px 2px ${blur}px rgba(0,0,0,${a})`;
+              })(),
+            }}
+          >
+            {translatedSentence}
+          </div>
+        )}
       </div>
     </div>
   );

@@ -185,6 +185,16 @@ export function SettingsTab() {
               className="sl-input w-full text-[11px] px-2 py-1 rounded border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-200"
             />
           </Row>
+          <Row label="Subtítulo bilingüe">
+            <Toggle
+              on={translate.showDualSubtitle}
+              onChange={(v) => setTranslate({ ...translate, showDualSubtitle: v })}
+            />
+          </Row>
+          <p className="text-[10px] text-zinc-500 dark:text-zinc-500 leading-snug -mt-0.5">
+            Muestra la frase completa traducida al idioma destino debajo del subtítulo original
+            (como Language Reactor / Trancy).
+          </p>
           {/* MyMemory email (raises 5k → 50k chars/day) */}
           <Row label="Email MyMemory (opcional)">
             <input
