@@ -40,3 +40,8 @@ node_modules/.vite/
 .eslintcache
 
 youtube_page_template.html
+
+# Avoid mixing package managers — the project is on pnpm (pnpm-lock.yaml).
+# A stale npm lockfile silently dropped 'fflate' once and broke the build.
+package-lock.json
+yarn.lock
