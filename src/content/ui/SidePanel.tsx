@@ -48,14 +48,14 @@ export function SidePanel({
           <button 
             onClick={toggleDarkMode}
             className="p-1.5 text-zinc-400 hover:text-amber-500 dark:hover:text-amber-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-md transition-colors"
-            title="Toggle theme"
+            title={isDarkMode ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
           >
             {isDarkMode ? <Sun size={16} /> : <Moon size={16} />}
           </button>
           <button 
             onClick={togglePopupMode}
             className="p-1.5 text-zinc-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 rounded-md transition-colors"
-            title={isPopupMode ? "Dock to side" : "Open as popup window"}
+            title={isPopupMode ? 'Anclar al lateral' : 'Abrir como ventana flotante'}
           >
             {isPopupMode ? <LayoutGrid size={16} /> : <ExternalLink size={16} />}
           </button>
@@ -72,9 +72,9 @@ export function SidePanel({
       {/* Tabs Nav */}
       <div className="flex border-b border-zinc-200 dark:border-zinc-800/60 bg-white dark:bg-zinc-950">
         {[
-          { id: 'subtitles', label: 'Subtitles', icon: Subtitles },
-          { id: 'cards', label: 'Cards', icon: LayoutGrid },
-          { id: 'settings', label: 'Settings', icon: Settings },
+          { id: 'subtitles', label: 'Subtítulos', icon: Subtitles },
+          { id: 'cards', label: 'Tarjetas', icon: LayoutGrid },
+          { id: 'settings', label: 'Ajustes', icon: Settings },
         ].map(tab => (
           <button
             key={tab.id}

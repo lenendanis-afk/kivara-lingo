@@ -165,3 +165,78 @@ export function parseAny(url: string, body: string): RawCue[] {
   if (kind === 'ttml' || kind === 'dfxp') return parseTTML(body);
   return [];
 }
+
+/**
+ * Best-effort BCP-47 language detection for an intercepted subtitle track.
+ *
+ * Tries (in order):
+ *   1. Body markers — TTML `xml:lang="..."` on the root element, or WebVTT
+ *      `Language: xx` header (HBO Max ships these).
+ *   2. URL hints — common HLS/DASH path conventions (`/subtitles/es/`,
+ *      `?lang=es-419`, `t/sub/es/...`) plus per-platform quirks.
+ *
+ * Returns the two-letter primary subtag in lowercase ("es", "en", "pt").
+ * Returns `null` when nothing matches — callers should treat that as
+ * "unknown language" rather than guessing.
+ */
+export function detectTrackLanguage(url: string, body: string): string | null {
+  // 1. WebVTT header `Language: es`
+  const vttLang = /^\s*WEBVTT[\s\S]*?^\s*Language\s*:\s*([A-Za-z][A-Za-z0-9-]*)/im.exec(body);
+  if (vttLang) return normalizeLang(vttLang[1]);
+
+  // 2. TTML / DFXP `xml:lang="es"` on the root.
+  const xmlLang = /<tt[^>]*\bxml:lang\s*=\s*"([^"]+)"/i.exec(body);
+  if (xmlLang) return normalizeLang(xmlLang[1]);
+
+  // 3. URL hints — order matters; the most specific patterns win.
+  const fromUrl = languageFromUrl(url);
+  if (fromUrl) return fromUrl;
+
+  return null;
+}
+
+function normalizeLang(raw: string): string | null {
+  const trimmed = raw.trim().toLowerCase();
+  if (!trimmed) return null;
+  // Strip region (es-419, en-US) — Kivara only cares about the primary tag
+  // for picking the dual-caption source. Callers that need the full tag can
+  // grab it from the bus value if we ever expose it.
+  return trimmed.split(/[-_]/)[0] || null;
+}
+
+function languageFromUrl(url: string): string | null {
+  try {
+    const u = new URL(url, 'https://x.invalid/');
+    // a) Query strings: ?lang=es / ?language=es-419 / ?l=es
+    for (const key of ['lang', 'language', 'l', 'locale']) {
+      const v = u.searchParams.get(key);
+      if (v) {
+        const n = normalizeLang(v);
+        if (n && /^[a-z]{2}$/.test(n)) return n;
+      }
+    }
+    // b) Path segments — match `/<lang>/` where <lang> is xx or xx-yy.
+    //    Examples from real streams:
+    //      .../t/sub/es-419/segment-1.vtt   (HBO Max)
+    //      .../subtitles/spa/...            (3-letter ISO; map below)
+    //      .../subs/es/...                  (Disney+)
+    const segs = u.pathname.split('/').filter(Boolean);
+    for (const seg of segs) {
+      const exact = /^([a-z]{2})(?:[-_][a-z0-9]{2,4})?$/i.exec(seg);
+      if (exact) return exact[1].toLowerCase();
+    }
+    // c) 3-letter ISO 639-2 fallback for a handful of common languages.
+    const iso3 = /\b(spa|eng|por|fre|fra|ger|deu|ita|jpn|kor|chi|zho)\b/i.exec(url);
+    if (iso3) {
+      const map: Record<string, string> = {
+        spa: 'es', eng: 'en', por: 'pt', fre: 'fr', fra: 'fr',
+        ger: 'de', deu: 'de', ita: 'it', jpn: 'ja', kor: 'ko',
+        chi: 'zh', zho: 'zh',
+      };
+      return map[iso3[1].toLowerCase()] ?? null;
+    }
+  } catch {
+    // ignore — malformed URL
+  }
+  return null;
+}

@@ -20,7 +20,7 @@
  *      TTML signatures. This catches platforms (notably HBO Max) that serve
  *      WebVTT segments without a `.vtt` extension in the URL.
  */
-import { parseAny, detectSubtitleKind } from './parsers';
+import { parseAny, detectSubtitleKind, detectTrackLanguage } from './parsers';
 
 const TAG = '[Kivara Lingo / MAIN]';
 const EVENT = 'kivara-lingo:subtitle-track';
@@ -127,10 +127,12 @@ declare global {
     try {
       const cues = parseAny(url, body);
       if (!cues.length) return;
+      const language = detectTrackLanguage(url, body);
       window.postMessage(
         {
           source: EVENT,
           url,
+          language,
           cues,
         },
         '*',

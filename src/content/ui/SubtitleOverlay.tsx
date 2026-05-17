@@ -10,6 +10,12 @@ import { WordPopover } from './WordPopover';
 export interface SubtitleOverlayProps {
   subtitleStyles: SubtitleStyles;
   cue: { id?: string; text: string; start?: number; end?: number; language?: string } | null;
+  /**
+   * Native-language alt cue running in parallel to the source caption — e.g.
+   * the platform's official Spanish subtitle track when the source is
+   * English. Preferred as the dual-caption source over MT.
+   */
+  altCue?: { id?: string; text: string; start?: number; end?: number; language?: string } | null;
   mode: Mode;
   saveRequestKey?: number | null;
   onSaveCard: (token: string | undefined, sentence: string) => void;
@@ -24,6 +30,7 @@ export interface SubtitleOverlayProps {
 export function SubtitleOverlay({
   subtitleStyles,
   cue,
+  altCue,
   mode,
   saveRequestKey,
   onSaveCard,
@@ -98,9 +105,17 @@ export function SubtitleOverlay({
   const showDualSubtitle = useKivaraStore((s) => s.translate.showDualSubtitle);
   const nativeLanguage = useKivaraStore((s) => s.translate.targetLanguage || 'es');
 
-  // Dual caption — translate the whole cue text to the native language and
-  // render it under the source subtitle. The translation is cached by the
-  // background's Dexie cache so re-displaying the same cue is instant.
+  // Dual caption priority chain:
+  //   1. Native-language alt cue from the platform's own subtitle track
+  //      (`altCue` prop, supplied by App.tsx polling the adapter). This is
+  //      the highest quality source — zero latency, free, human-quality
+  //      translation, already timed to the source cue.
+  //   2. Remote MT (DeepL / Google / MyMemory / Lingva / offline chain) of
+  //      the whole source sentence, cached in IndexedDB so re-displaying
+  //      the same cue is instant after the first call.
+  //   3. Nothing — source language already equals target, or both options
+  //      returned empty.
+  const nativeAltText = altCue?.text?.trim() || null;
   const [translatedSentence, setTranslatedSentence] = useState<string | null>(null);
   useEffect(() => {
     if (!showDualSubtitle) {
@@ -114,6 +129,12 @@ export function SubtitleOverlay({
     }
     // Skip if source language equals target language (no-op).
     if ((cueLanguage || 'en').slice(0, 2) === nativeLanguage.slice(0, 2)) {
+      setTranslatedSentence(null);
+      return;
+    }
+    // The platform already shipped a native translation — use it directly
+    // and skip the round-trip to the MT provider.
+    if (nativeAltText) {
       setTranslatedSentence(null);
       return;
     }
@@ -140,7 +161,17 @@ export function SubtitleOverlay({
       cancelled = true;
       clearTimeout(t);
     };
-  }, [targetSentence, cueLanguage, nativeLanguage, showDualSubtitle]);
+  }, [targetSentence, cueLanguage, nativeLanguage, showDualSubtitle, nativeAltText]);
+
+  // Final string shown on the bilingual line.
+  const dualCaptionText = nativeAltText ?? translatedSentence;
+  // Tag the bilingual line so the user can tell at a glance whether it came
+  // from the platform or from MT — useful when debugging quality issues.
+  const dualCaptionSource: 'native' | 'mt' | null = nativeAltText
+    ? 'native'
+    : translatedSentence
+      ? 'mt'
+      : null;
 
   const tokens = useMemo(
     () => tokenizeSentence(targetSentence, effectiveExpanded, cueLanguage),
@@ -458,14 +489,18 @@ export function SubtitleOverlay({
         </div>
 
         {/* Dual caption — native-language full sentence under the source.
-            Renders only when the source language differs from the user's
-            native language and the cache/translator returned something
-            different from the input. Sits inside the same pointer-events
-            container so hovering it also pauses the video, just like the
-            source line. */}
-        {showDualSubtitle && translatedSentence && !isReading && (
+            Prefers the platform's own subtitle track (when available) over
+            an MT round-trip. Sits inside the same pointer-events container
+            so hovering it pauses the video, just like the source line. */}
+        {showDualSubtitle && dualCaptionText && !isReading && (
           <div
+            data-kivara-hover-zone="true"
             className="text-center rounded-md px-4 py-1 mt-1 select-text"
+            title={
+              dualCaptionSource === 'native'
+                ? 'Subtítulo nativo de la plataforma'
+                : 'Traducción automática'
+            }
             style={{
               fontSize: `${Math.max(12, subtitleStyles.fontSize - 4)}px`,
               color: '#d4d4d8',
@@ -481,7 +516,7 @@ export function SubtitleOverlay({
               })(),
             }}
           >
-            {translatedSentence}
+            {dualCaptionText}
           </div>
         )}
       </div>
