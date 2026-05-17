@@ -9,7 +9,23 @@ export interface SubtitleStyles {
   fontWeight: 'normal' | 'bold' | '900';
   /** 0..100 — text shadow intensity (0 = off) */
   textShadow: number;
+  /**
+   * When true, preserve the platform's original line breaks (`\n` inside the
+   * cue text) instead of collapsing them into a single line. Off by default
+   * because Kivara's own renderer wraps on the natural word boundary and
+   * looks tidier than the platform's hard breaks.
+   */
+  keepNativeLineBreaks: boolean;
+  /**
+   * When true, honour the cue's `align` setting from the platform (left /
+   * center / right) instead of always centering. Falls back to center when
+   * the adapter couldn't extract an alignment hint.
+   */
+  keepNativeAlignment: boolean;
 }
+
+/** Native cue alignment as preserved by the parser/adapter. */
+export type CueAlign = 'start' | 'center' | 'end' | 'left' | 'right';
 
 /**
  * One source of data that can populate a single Anki note field. The names

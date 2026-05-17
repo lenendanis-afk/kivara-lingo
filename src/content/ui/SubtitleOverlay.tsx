@@ -9,13 +9,27 @@ import { WordPopover } from './WordPopover';
 
 export interface SubtitleOverlayProps {
   subtitleStyles: SubtitleStyles;
-  cue: { id?: string; text: string; start?: number; end?: number; language?: string } | null;
+  cue: {
+    id?: string;
+    text: string;
+    start?: number;
+    end?: number;
+    language?: string;
+    align?: 'start' | 'center' | 'end' | 'left' | 'right';
+  } | null;
   /**
    * Native-language alt cue running in parallel to the source caption — e.g.
    * the platform's official Spanish subtitle track when the source is
    * English. Preferred as the dual-caption source over MT.
    */
-  altCue?: { id?: string; text: string; start?: number; end?: number; language?: string } | null;
+  altCue?: {
+    id?: string;
+    text: string;
+    start?: number;
+    end?: number;
+    language?: string;
+    align?: 'start' | 'center' | 'end' | 'left' | 'right';
+  } | null;
   mode: Mode;
   saveRequestKey?: number | null;
   onSaveCard: (token: string | undefined, sentence: string) => void;
@@ -39,18 +53,22 @@ export function SubtitleOverlay({
   const [isHovered, setIsHovered] = useState(false);
   const [copied, setCopied] = useState(false);
   const [captureState, setCaptureState] = useState<'idle' | 'screenshot' | 'audio'>('idle');
-  const [hoveredKey, setHoveredKey] = useState<string | null>(null);
+  // Identifier of the currently hovered token. Encoded as `${lineIdx}:${tokIdx}`
+  // so two occurrences of the same word in a single cue ("how's this, how's
+  // that") light up independently — previously the overlay tracked the
+  // token's dictionary key, which collides when the same word appears twice.
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [expandedMWEs, setExpandedMWEs] = useState<Set<string>>(new Set());
   const [altExpandedKey, setAltExpandedKey] = useState<string | null>(null);
   const [savedTokens, setSavedTokens] = useState<Set<string>>(new Set());
 
   const hoverTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wordHoverTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Tracks the *dictionary key* of the currently hovered token so the Alt /
+  // Ctrl+S handlers can act on the actual word/MWE. Kept in sync with
+  // hoveredId, but never used to drive React render — the index is the only
+  // identity for highlighting.
   const hoveredKeyRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    hoveredKeyRef.current = hoveredKey;
-  }, [hoveredKey]);
 
   // Notify parent (App) so it can pause/resume the underlying <video>. We
   // pause whenever ANY part of the subtitle box is hovered — not just when a
@@ -58,8 +76,8 @@ export function SubtitleOverlay({
   // video even on platforms (e.g. YouTube) where most tokens are tagged
   // `unknown` and don't fire `handleTokenEnter`.
   useEffect(() => {
-    onTokenHoverChange?.(isHovered || hoveredKey !== null);
-  }, [isHovered, hoveredKey, onTokenHoverChange]);
+    onTokenHoverChange?.(isHovered || hoveredId !== null);
+  }, [isHovered, hoveredId, onTokenHoverChange]);
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
@@ -173,23 +191,44 @@ export function SubtitleOverlay({
       ? 'mt'
       : null;
 
-  const tokens = useMemo(
-    () => tokenizeSentence(targetSentence, effectiveExpanded, cueLanguage),
-    [targetSentence, effectiveExpanded, cueLanguage],
+  // Split the cue into rendered lines. When the user opts into "mantener
+  // saltos de línea nativos" we honour every `\n` in the cue text; otherwise
+  // we collapse them so the overlay's own word-wrap stays in charge.
+  const lines = useMemo(() => {
+    const src = targetSentence;
+    if (subtitleStyles.keepNativeLineBreaks) {
+      const parts = src.split(/\r?\n/);
+      // Drop trailing empty line if the cue ends with `\n`.
+      while (parts.length > 1 && parts[parts.length - 1].trim() === '') {
+        parts.pop();
+      }
+      return parts.length > 0 ? parts : [src];
+    }
+    return [src.replace(/\r?\n+/g, ' ').replace(/\s{2,}/g, ' ')];
+  }, [targetSentence, subtitleStyles.keepNativeLineBreaks]);
+
+  const lineTokens = useMemo(
+    () => lines.map((line) => tokenizeSentence(line, effectiveExpanded, cueLanguage)),
+    [lines, effectiveExpanded, cueLanguage],
   );
 
   // Reset cue-scoped UI state whenever the cue changes.
   useEffect(() => {
-    setHoveredKey(null);
+    setHoveredId(null);
+    hoveredKeyRef.current = null;
     setAltExpandedKey(null);
   }, [cue?.id]);
 
-  const handleTokenEnter = (key: string) => {
+  const handleTokenEnter = (id: string, key: string) => {
     if (wordHoverTimeout.current) clearTimeout(wordHoverTimeout.current);
-    setHoveredKey(key);
+    setHoveredId(id);
+    hoveredKeyRef.current = key;
   };
   const handleTokenLeave = () => {
-    wordHoverTimeout.current = setTimeout(() => setHoveredKey(null), 180);
+    wordHoverTimeout.current = setTimeout(() => {
+      setHoveredId(null);
+      hoveredKeyRef.current = null;
+    }, 180);
   };
 
   const toggleExpandMWE = (key: string) => {
@@ -199,7 +238,8 @@ export function SubtitleOverlay({
       else next.add(key);
       return next;
     });
-    setHoveredKey(null);
+    setHoveredId(null);
+    hoveredKeyRef.current = null;
   };
 
   const findParentMWE = (wordKey: string): string | null => {
@@ -271,6 +311,20 @@ export function SubtitleOverlay({
 
   const isReading = mode === 'reading';
 
+  // Honor the cue's `align` setting only when the user opted in. Otherwise
+  // (and when the adapter couldn't extract an align hint) we keep the
+  // overlay's default centered layout, which is what most viewers expect on
+  // any platform.
+  const textAlignment: 'left' | 'center' | 'right' = (() => {
+    if (!subtitleStyles.keepNativeAlignment) return 'center';
+    const a = cue?.align;
+    if (a === 'start' || a === 'left') return 'left';
+    if (a === 'end' || a === 'right') return 'right';
+    return 'center';
+  })();
+  const flexJustify: 'flex-start' | 'center' | 'flex-end' =
+    textAlignment === 'left' ? 'flex-start' : textAlignment === 'right' ? 'flex-end' : 'center';
+
   return (
     <div
       className="absolute inset-x-0 z-10 flex flex-col items-center px-8 transition-all duration-200"
@@ -291,7 +345,7 @@ export function SubtitleOverlay({
         {!isReading && (
           <div
             className={`absolute -top-12 z-10 flex items-center gap-1 bg-zinc-900/95 backdrop-blur-sm border border-zinc-700/60 p-1 rounded-lg shadow-xl transition-all duration-300 transform ${
-              isHovered && hoveredKey === null ? 'translate-y-0 opacity-100' : 'translate-y-2 opacity-0 pointer-events-none'
+              isHovered && hoveredId === null ? 'translate-y-0 opacity-100' : 'translate-y-2 opacity-0 pointer-events-none'
             }`}
           >
             <span className="text-[9px] font-semibold uppercase tracking-wider text-zinc-500 px-2">Frase</span>
@@ -338,8 +392,9 @@ export function SubtitleOverlay({
         )}
 
         <div
-          className="text-center rounded-md px-4 py-2 transition-all duration-300"
+          className="rounded-md px-4 py-2 transition-all duration-300"
           style={{
+            textAlign: textAlignment,
             fontSize: `${subtitleStyles.fontSize}px`,
             color: subtitleStyles.color,
             backgroundColor: !isReading && isHovered ? 'rgba(0,0,0,0.8)' : backgroundColorWithOpacity,
@@ -359,161 +414,193 @@ export function SubtitleOverlay({
           }}
         >
           {isReading ? (
-            <span>{targetSentence}</span>
+            // Reading mode: no popovers, but still respect the
+            // "keepNativeLineBreaks" toggle so the visible layout matches
+            // interactive mode.
+            <div className="flex flex-col" style={{ alignItems: flexJustify }}>
+              {lines.map((line, li) => (
+                <span key={li}>{line}</span>
+              ))}
+            </div>
           ) : (
-            <span>
-              {tokens.map((tok, i) => {
-                if (tok.kind === 'punct') {
-                  return <React.Fragment key={tok.key + i}>{tok.text}</React.Fragment>;
-                }
-                // `ignored` tokens render exactly like punct text — no
-                // affordance, no popover, no hover state. This is how the
-                // tokenizer hides auto-classified proper nouns.
-                if (tok.kind === 'ignored') {
-                  return (
-                    <span key={tok.key + i} className="opacity-90">
-                      {tok.text}
-                    </span>
-                  );
-                }
-                const isTokHovered = hoveredKey === tok.key;
-                const isSaved = savedTokens.has(tok.key.toLowerCase());
-                // After the Phase 2 audit we make `unknown` interactive too —
-                // hovering triggers the remote translation chain inside
-                // WordPopover. The visual affordance is much subtler than
-                // known/mwe so it doesn't compete for attention.
-                const isInteractive =
-                  tok.kind === 'mwe' ||
-                  tok.kind === 'known' ||
-                  tok.kind === 'unknown' ||
-                  tok.kind === 'mastered';
+            <div className="flex flex-col" style={{ alignItems: flexJustify }}>
+              {lineTokens.map((tokens, li) => (
+                <div key={li} className="block">
+                  {tokens.map((tok, i) => {
+                    if (tok.kind === 'punct') {
+                      return (
+                        <React.Fragment key={`${li}:${i}:${tok.key}`}>
+                          {tok.text}
+                        </React.Fragment>
+                      );
+                    }
+                    // `ignored` tokens render exactly like punct text — no
+                    // affordance, no popover, no hover state. This is how the
+                    // tokenizer hides auto-classified proper nouns.
+                    if (tok.kind === 'ignored') {
+                      return (
+                        <span key={`${li}:${i}:${tok.key}`} className="opacity-90">
+                          {tok.text}
+                        </span>
+                      );
+                    }
+                    // `id` is the per-occurrence hover identity. Composite of
+                    // line index + token index so two instances of the same
+                    // word in a single cue ("how's this, how's that") keep
+                    // independent hover/popover state — previously the
+                    // overlay keyed off `tok.key` (the lowercased text) and
+                    // both occurrences lit up together.
+                    const id = `${li}:${i}`;
+                    const isTokHovered = hoveredId === id;
+                    const isSaved = savedTokens.has(tok.key.toLowerCase());
+                    // After the Phase 2 audit we make `unknown` interactive too —
+                    // hovering triggers the remote translation chain inside
+                    // WordPopover. The visual affordance is much subtler than
+                    // known/mwe so it doesn't compete for attention.
+                    const isInteractive =
+                      tok.kind === 'mwe' ||
+                      tok.kind === 'known' ||
+                      tok.kind === 'unknown' ||
+                      tok.kind === 'mastered';
 
-                let colorClass: string;
-                if (isTokHovered) {
-                  colorClass =
-                    'text-white bg-indigo-600 shadow-[0_2px_8px_rgba(99,102,241,0.45)]';
-                } else if (isSaved) {
-                  colorClass =
-                    'text-emerald-300 border-b-2 border-emerald-400/70 hover:bg-emerald-400/10';
-                } else if (tok.kind === 'mwe' && tok.mweKind === 'phrasal') {
-                  // Phrasal verbs use a solid azul underline (distinct from
-                  // idiomatic MWEs) to signal they're grammatical units.
-                  colorClass =
-                    'text-sky-300 border-b-2 border-sky-400 hover:bg-sky-400/15';
-                } else if (tok.kind === 'mwe') {
-                  colorClass =
-                    'text-amber-300 border-b-2 border-amber-400 border-dotted hover:bg-amber-400/15';
-                } else if (tok.kind === 'known') {
-                  colorClass =
-                    'border-b border-zinc-300/40 border-dashed hover:text-white hover:bg-white/10';
-                } else if (tok.kind === 'mastered') {
-                  colorClass = 'opacity-50 hover:opacity-100 hover:bg-white/5';
-                } else {
-                  // unknown — interactive but with the most subtle affordance.
-                  colorClass =
-                    'opacity-80 hover:opacity-100 hover:bg-white/10 hover:underline hover:decoration-dotted hover:decoration-zinc-400/70 hover:underline-offset-2';
-                }
+                    let colorClass: string;
+                    if (isTokHovered) {
+                      colorClass =
+                        'text-white bg-indigo-600 shadow-[0_2px_8px_rgba(99,102,241,0.45)]';
+                    } else if (isSaved) {
+                      colorClass =
+                        'text-emerald-300 border-b-2 border-emerald-400/70 hover:bg-emerald-400/10';
+                    } else if (tok.kind === 'mwe' && tok.mweKind === 'phrasal') {
+                      // Phrasal verbs use a solid azul underline (distinct from
+                      // idiomatic MWEs) to signal they're grammatical units.
+                      colorClass =
+                        'text-sky-300 border-b-2 border-sky-400 hover:bg-sky-400/15';
+                    } else if (tok.kind === 'mwe') {
+                      colorClass =
+                        'text-amber-300 border-b-2 border-amber-400 border-dotted hover:bg-amber-400/15';
+                    } else if (tok.kind === 'known') {
+                      colorClass =
+                        'border-b border-zinc-300/40 border-dashed hover:text-white hover:bg-white/10';
+                    } else if (tok.kind === 'mastered') {
+                      colorClass = 'opacity-50 hover:opacity-100 hover:bg-white/5';
+                    } else {
+                      // unknown — interactive but with the most subtle affordance.
+                      colorClass =
+                        'opacity-80 hover:opacity-100 hover:bg-white/10 hover:underline hover:decoration-dotted hover:decoration-zinc-400/70 hover:underline-offset-2';
+                    }
 
-                const parentForSplit = tok.kind !== 'mwe' ? findParentMWE(tok.key) : null;
-                const wheelable = tok.kind === 'mwe' || !!parentForSplit;
-                const handleWheel = (e: React.WheelEvent) => {
-                  if (!wheelable) return;
-                  e.preventDefault();
-                  e.stopPropagation();
-                  if (e.deltaY > 0 && tok.kind === 'mwe') {
-                    setExpandedMWEs((prev) => {
-                      const n = new Set(prev);
-                      n.add(tok.key);
-                      return n;
-                    });
-                  } else if (e.deltaY < 0 && parentForSplit) {
-                    setExpandedMWEs((prev) => {
-                      const n = new Set(prev);
-                      n.delete(parentForSplit);
-                      return n;
-                    });
-                    setHoveredKey(null);
-                  }
-                };
+                    const parentForSplit = tok.kind !== 'mwe' ? findParentMWE(tok.key) : null;
+                    const wheelable = tok.kind === 'mwe' || !!parentForSplit;
+                    const handleWheel = (e: React.WheelEvent) => {
+                      if (!wheelable) return;
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (e.deltaY > 0 && tok.kind === 'mwe') {
+                        setExpandedMWEs((prev) => {
+                          const n = new Set(prev);
+                          n.add(tok.key);
+                          return n;
+                        });
+                      } else if (e.deltaY < 0 && parentForSplit) {
+                        setExpandedMWEs((prev) => {
+                          const n = new Set(prev);
+                          n.delete(parentForSplit);
+                          return n;
+                        });
+                        setHoveredId(null);
+                        hoveredKeyRef.current = null;
+                      }
+                    };
 
-                return (
-                  <span key={tok.key + i} className="relative inline-block">
-                    <span
-                      onMouseEnter={() => isInteractive && handleTokenEnter(tok.key)}
-                      onMouseLeave={handleTokenLeave}
-                      onWheel={handleWheel}
-                      className={`relative rounded px-0.5 transition-all duration-150 ${
-                        isInteractive ? 'cursor-help' : ''
-                      } ${colorClass}`}
-                    >
-                      {tok.text}
-                      {isSaved && !isTokHovered && (
-                        <Check size={9} className="inline-block ml-0.5 -mt-1 text-emerald-400" strokeWidth={3} />
-                      )}
-                    </span>
-                    {isTokHovered && isInteractive && (
-                      <WordPopover
-                        visible={true}
-                        onMouseEnter={() => handleTokenEnter(tok.key)}
-                        onMouseLeave={handleTokenLeave}
-                        token={tok.text}
-                        sentence={targetSentence}
-                        sourceLang={cueLanguage}
-                        includeAi={includeAi}
-                        kind={tok.kind}
-                        mweKind={tok.mweKind}
-                        lemma={tok.lemma}
-                        isExpanded={expandedMWEs.has(tok.key)}
-                        isSaved={isSaved}
-                        parentMWE={tok.kind !== 'mwe' ? findParentMWE(tok.key) : null}
-                        onToggleExpand={() => toggleExpandMWE(tok.key)}
-                        onRejoinParent={(parent) => {
-                          setExpandedMWEs((prev) => {
-                            const n = new Set(prev);
-                            n.delete(parent);
-                            return n;
-                          });
-                          setHoveredKey(null);
-                        }}
-                        onSave={(e, token) => {
-                          e.stopPropagation();
-                          handleSaveToken(token);
-                        }}
-                      />
-                    )}
-                  </span>
-                );
-              })}
-            </span>
+                    return (
+                      <span key={`${li}:${i}:${tok.key}`} className="relative inline-block">
+                        <span
+                          onMouseEnter={() => isInteractive && handleTokenEnter(id, tok.key)}
+                          onMouseLeave={handleTokenLeave}
+                          onWheel={handleWheel}
+                          className={`relative rounded px-0.5 transition-all duration-150 ${
+                            isInteractive ? 'cursor-help' : ''
+                          } ${colorClass}`}
+                        >
+                          {tok.text}
+                          {isSaved && !isTokHovered && (
+                            <Check size={9} className="inline-block ml-0.5 -mt-1 text-emerald-400" strokeWidth={3} />
+                          )}
+                        </span>
+                        {isTokHovered && isInteractive && (
+                          <WordPopover
+                            visible={true}
+                            onMouseEnter={() => handleTokenEnter(id, tok.key)}
+                            onMouseLeave={handleTokenLeave}
+                            token={tok.text}
+                            sentence={targetSentence}
+                            sourceLang={cueLanguage}
+                            includeAi={includeAi}
+                            kind={tok.kind}
+                            mweKind={tok.mweKind}
+                            lemma={tok.lemma}
+                            isExpanded={expandedMWEs.has(tok.key)}
+                            isSaved={isSaved}
+                            parentMWE={tok.kind !== 'mwe' ? findParentMWE(tok.key) : null}
+                            onToggleExpand={() => toggleExpandMWE(tok.key)}
+                            onRejoinParent={(parent) => {
+                              setExpandedMWEs((prev) => {
+                                const n = new Set(prev);
+                                n.delete(parent);
+                                return n;
+                              });
+                              setHoveredId(null);
+                              hoveredKeyRef.current = null;
+                            }}
+                            onSave={(e, token) => {
+                              e.stopPropagation();
+                              handleSaveToken(token);
+                            }}
+                          />
+                        )}
+                      </span>
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
           )}
         </div>
 
         {/* Dual caption — native-language full sentence under the source.
             Prefers the platform's own subtitle track (when available) over
-            an MT round-trip. Sits inside the same pointer-events container
-            so hovering it pauses the video, just like the source line. */}
+            an MT round-trip. Visual style matches the original Figma Make
+            mock (font-medium, tracking-wide, fixed semi-black plate, no
+            italic) and only appears when the source caption is hovered —
+            previously it was permanently visible which clashed with the
+            cleaner mock behaviour. We always render the node so the fade-in
+            animation works; visibility is gated via opacity + pointer-events. */}
         {showDualSubtitle && dualCaptionText && !isReading && (
           <div
             data-kivara-hover-zone="true"
-            className="text-center rounded-md px-4 py-1 mt-1 select-text"
+            className={`mt-2 select-text transition-all duration-200 ease-out ${
+              isHovered
+                ? 'opacity-100 translate-y-0'
+                : 'opacity-0 translate-y-1 pointer-events-none'
+            }`}
             title={
               dualCaptionSource === 'native'
                 ? 'Subtítulo nativo de la plataforma'
                 : 'Traducción automática'
             }
             style={{
-              fontSize: `${Math.max(12, subtitleStyles.fontSize - 4)}px`,
-              color: '#d4d4d8',
-              backgroundColor: backgroundColorWithOpacity,
-              fontWeight: 400,
-              fontStyle: 'italic',
-              textShadow: (() => {
-                const s = subtitleStyles.textShadow;
-                if (s <= 0) return 'none';
-                const a = (s / 100).toFixed(2);
-                const blur = Math.max(2, Math.round(s / 18));
-                return `2px 2px ${blur}px rgba(0,0,0,${a})`;
-              })(),
+              // text-xl in the mock (~20px). We anchor on the user's source
+              // font-size so the bilingual line scales with it; min 14px so
+              // it stays legible at the smallest source sizes.
+              fontSize: `${Math.max(14, Math.round(subtitleStyles.fontSize * 0.6))}px`,
+              fontWeight: 500,
+              letterSpacing: '0.025em',
+              color: '#e5e7eb',
+              backgroundColor: 'rgba(0,0,0,0.5)',
+              padding: '2px 12px',
+              borderRadius: '6px',
+              textShadow: '0 2px 8px rgba(0,0,0,0.9)',
+              textAlign: textAlignment,
             }}
           >
             {dualCaptionText}

@@ -21,6 +21,11 @@ export const DEFAULT_SUBTITLE_STYLES: SubtitleStyles = {
   verticalOffset: 85,
   fontWeight: 'bold',
   textShadow: 80,
+  // Kivara replaces the platform's defaults with its own layout — single-line
+  // wrap, centered. The user can opt back into the platform's defaults from
+  // the Subtitles tab.
+  keepNativeLineBreaks: false,
+  keepNativeAlignment: false,
 };
 
 export const DEFAULT_ANKI_MAPPING: AnkiMapping = {

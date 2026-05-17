@@ -59,6 +59,7 @@ export function createInterceptedAdapter(opts: InterceptedAdapterOptions): Subti
       end: hit.end,
       text: hit.text,
       language: opts.language,
+      align: hit.align,
     };
   }
 
@@ -172,6 +173,7 @@ export function createInterceptedAdapter(opts: InterceptedAdapterOptions): Subti
         end: hit.end,
         text: hit.text,
         language: altTrack.language ?? lang,
+        align: hit.align,
       };
     },
     getAvailableAltLanguages() {

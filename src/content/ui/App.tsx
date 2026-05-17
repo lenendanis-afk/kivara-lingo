@@ -17,6 +17,8 @@ interface ActiveCue {
   start?: number;
   end?: number;
   language?: string;
+  /** Native alignment hint forwarded by the adapter (see SubtitleCue.align). */
+  align?: 'start' | 'center' | 'end' | 'left' | 'right';
 }
 
 interface AppProps {
@@ -120,6 +122,7 @@ export function App({ adapter, videoElement, videoOverlayRoot }: AppProps) {
         start: first.start,
         end: first.end,
         language: first.language,
+        align: first.align,
       });
     });
     const initialCue = adapter.getActiveCue?.();
@@ -131,6 +134,7 @@ export function App({ adapter, videoElement, videoOverlayRoot }: AppProps) {
         start: initialCue.start,
         end: initialCue.end,
         language: initialCue.language,
+        align: initialCue.align,
       });
     }
   }, [adapter]);
@@ -159,6 +163,7 @@ export function App({ adapter, videoElement, videoOverlayRoot }: AppProps) {
                 start: next.start,
                 end: next.end,
                 language: next.language,
+                align: next.align,
               }
             : null,
         );

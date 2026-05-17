@@ -10,13 +10,24 @@ export function attachGenericHtml5(video: HTMLVideoElement): SubtitleSource {
     const activeCues = activeTrack.activeCues;
     if (activeCues && activeCues.length > 0) {
       const nativeCue = activeCues[0] as VTTCue;
+      // `align` on a VTTCue is one of 'start' | 'center' | 'end' | 'left'
+      // | 'right'. We pass it through verbatim; the overlay decides whether
+      // to honor it (settings → "Mantener alineación nativa").
+      const rawAlign = (nativeCue as VTTCue).align as
+        | 'start'
+        | 'center'
+        | 'end'
+        | 'left'
+        | 'right'
+        | undefined;
       currentActiveCue = {
         id: nativeCue.id || Math.random().toString(),
         start: nativeCue.startTime * 1000,
         end: nativeCue.endTime * 1000,
         // Sometimes VTTCue text has HTML tags like <i>, let's clean them, but for MVP keep raw:
         text: nativeCue.text,
-        language: activeTrack.language || 'en'
+        language: activeTrack.language || 'en',
+        align: rawAlign,
       };
       listeners.forEach(l => l([currentActiveCue!]));
     } else {

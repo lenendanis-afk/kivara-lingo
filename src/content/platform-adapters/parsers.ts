@@ -10,6 +10,24 @@ export interface RawCue {
   start: number;
   end: number;
   text: string;
+  /**
+   * Native horizontal alignment if the source carried one. WebVTT cue
+   * settings (`align:start`) and TTML `tts:textAlign` are the two sources we
+   * extract here. Adapters forward this to `SubtitleCue.align`; the overlay
+   * decides whether to honor it via the user's settings toggle.
+   */
+  align?: 'start' | 'center' | 'end' | 'left' | 'right';
+}
+
+function normalizeAlign(
+  raw: string | undefined | null,
+): RawCue['align'] | undefined {
+  if (!raw) return undefined;
+  const v = raw.trim().toLowerCase();
+  if (v === 'start' || v === 'left') return 'start';
+  if (v === 'end' || v === 'right') return 'end';
+  if (v === 'center' || v === 'middle' || v === 'centre') return 'center';
+  return undefined;
 }
 
 function timeStringToMs(input: string): number {
@@ -95,9 +113,20 @@ export function parseWebVTT(input: string): RawCue[] {
       continue;
     }
     const [rawStart, rawRest] = timingLine.split('-->');
-    const rawEnd = rawRest.trim().split(/\s+/)[0];
+    const restTokens = rawRest.trim().split(/\s+/);
+    const rawEnd = restTokens[0];
     const start = timeStringToMs(rawStart);
     const end = timeStringToMs(rawEnd);
+    // The remaining tokens are cue settings: `align:start`, `position:50%`,
+    // `line:0%` etc. Only `align` interests us here.
+    let cueAlign: RawCue['align'] | undefined;
+    for (let k = 1; k < restTokens.length; k++) {
+      const tok = restTokens[k];
+      if (tok.toLowerCase().startsWith('align:')) {
+        cueAlign = normalizeAlign(tok.slice(6));
+        break;
+      }
+    }
     i++;
     const textLines: string[] = [];
     while (i < lines.length && lines[i].trim() !== '') {
@@ -105,7 +134,7 @@ export function parseWebVTT(input: string): RawCue[] {
       i++;
     }
     const text = stripHtml(textLines.join('\n'));
-    if (text) cues.push({ start, end, text });
+    if (text) cues.push({ start, end, text, align: cueAlign });
   }
   return cues;
 }
@@ -122,18 +151,27 @@ export function parseTTML(input: string): RawCue[] {
   const tickRate = tickMatch ? parseInt(tickMatch[1], 10) : 0;
 
   const cues: RawCue[] = [];
-  const pRegex = /<p\b[^>]*?begin\s*=\s*"([^"]+)"[^>]*?end\s*=\s*"([^"]+)"[^>]*>([\s\S]*?)<\/p>/g;
+  // Match `<p ...>...</p>` blocks, then look at the *opening tag* for align /
+  // textAlign hints.
+  const pRegex = /<p\b([^>]*?)begin\s*=\s*"([^"]+)"([^>]*?)end\s*=\s*"([^"]+)"([^>]*)>([\s\S]*?)<\/p>/g;
   let match: RegExpExecArray | null;
   while ((match = pRegex.exec(input))) {
-    const start = tickToMs(match[1], tickRate);
-    const end = tickToMs(match[2], tickRate);
+    const start = tickToMs(match[2], tickRate);
+    const end = tickToMs(match[4], tickRate);
     if (Number.isNaN(start) || Number.isNaN(end)) continue;
+    const openTag = `${match[1]}${match[3]}${match[5]}`;
+    // `tts:textAlign="start"` is the standard TTML attribute; some streams
+    // also emit a plain `align` attribute.
+    const alignAttr =
+      /\b(?:tts:)?text-?align\s*=\s*"([^"]+)"/i.exec(openTag)?.[1] ??
+      /\balign\s*=\s*"([^"]+)"/i.exec(openTag)?.[1];
+    const cueAlign = normalizeAlign(alignAttr);
     // Replace <br/> with newline before stripping
-    const withBreaks = match[3].replace(/<br\s*\/?\s*>/gi, '\n');
+    const withBreaks = match[6].replace(/<br\s*\/?\s*>/gi, '\n');
     // Replace <span ...>X</span> with X
     const flat = withBreaks.replace(/<span[^>]*>([\s\S]*?)<\/span>/gi, '$1');
     const text = stripHtml(flat);
-    if (text) cues.push({ start, end, text });
+    if (text) cues.push({ start, end, text, align: cueAlign });
   }
   return cues;
 }

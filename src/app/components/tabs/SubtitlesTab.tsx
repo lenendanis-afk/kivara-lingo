@@ -1,6 +1,12 @@
 import React from 'react';
 import { SubtitleStyles } from '../../types';
-import { Type, Palette, AlignVerticalSpaceBetween, RotateCcw } from 'lucide-react';
+import {
+  Type,
+  Palette,
+  AlignVerticalSpaceBetween,
+  RotateCcw,
+  AlignLeft,
+} from 'lucide-react';
 
 const DEFAULT_STYLES: SubtitleStyles = {
   fontSize: 32,
@@ -11,6 +17,8 @@ const DEFAULT_STYLES: SubtitleStyles = {
   verticalOffset: 85,
   fontWeight: 'bold',
   textShadow: 80,
+  keepNativeLineBreaks: false,
+  keepNativeAlignment: false,
 };
 
 interface SubtitlesTabProps {
@@ -31,7 +39,9 @@ export function SubtitlesTab({ styles, setStyles }: SubtitlesTabProps) {
     styles.position === DEFAULT_STYLES.position &&
     styles.verticalOffset === DEFAULT_STYLES.verticalOffset &&
     styles.fontWeight === DEFAULT_STYLES.fontWeight &&
-    styles.textShadow === DEFAULT_STYLES.textShadow;
+    styles.textShadow === DEFAULT_STYLES.textShadow &&
+    styles.keepNativeLineBreaks === DEFAULT_STYLES.keepNativeLineBreaks &&
+    styles.keepNativeAlignment === DEFAULT_STYLES.keepNativeAlignment;
 
   return (
     <div className="h-full min-h-0 overflow-y-auto bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100">
@@ -188,6 +198,24 @@ export function SubtitlesTab({ styles, setStyles }: SubtitlesTabProps) {
             </div>
           </Row>
         </Section>
+
+        {/* Formato nativo — opt-in to the platform's own line breaks and
+            text alignment. Off by default so Kivara's renderer can do its
+            own clean single-line / centered layout. */}
+        <Section icon={<AlignLeft size={10} />} title="Formato nativo">
+          <ToggleRow
+            label="Mantener saltos de línea"
+            description="Respeta los saltos de línea originales del subtítulo (varias filas) en lugar de unirlos en una sola línea."
+            checked={styles.keepNativeLineBreaks}
+            onChange={(v) => updateStyle('keepNativeLineBreaks', v)}
+          />
+          <ToggleRow
+            label="Mantener alineación"
+            description="Usa la alineación original (izquierda, centro o derecha) que la plataforma envía con cada cue. Sin efecto si la plataforma no la expone."
+            checked={styles.keepNativeAlignment}
+            onChange={(v) => updateStyle('keepNativeAlignment', v)}
+          />
+        </Section>
       </div>
     </div>
   );
@@ -219,6 +247,47 @@ function Row({ label, value, children }: { label: string; value?: string; childr
       </div>
       {children}
     </div>
+  );
+}
+
+function ToggleRow({
+  label,
+  description,
+  checked,
+  onChange,
+}: {
+  label: string;
+  description?: string;
+  checked: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  return (
+    <label className="flex items-start justify-between gap-3 cursor-pointer select-none">
+      <div className="flex-1 min-w-0">
+        <div className="text-[11px] font-medium text-zinc-700 dark:text-zinc-300">
+          {label}
+        </div>
+        {description && (
+          <p className="text-[10px] leading-snug text-zinc-500 dark:text-zinc-400 mt-0.5">
+            {description}
+          </p>
+        )}
+      </div>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        onClick={() => onChange(!checked)}
+        className={`relative shrink-0 w-9 h-5 rounded-full transition-colors duration-200 mt-0.5 ${
+          checked ? 'bg-indigo-500' : 'bg-zinc-300 dark:bg-zinc-700'
+        }`}
+      >
+        <span
+          className="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform duration-200"
+          style={{ transform: checked ? 'translateX(16px)' : 'translateX(0)' }}
+        />
+      </button>
+    </label>
   );
 }
 

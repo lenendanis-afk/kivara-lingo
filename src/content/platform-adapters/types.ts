@@ -4,6 +4,15 @@ export interface SubtitleCue {
   end: number;
   text: string;
   language: string;
+  /**
+   * Optional horizontal alignment hint extracted from the platform's cue
+   * (VTT `align:start` setting, TTML `tts:textAlign`, or the WebVTT
+   * `TextTrackCue.align` enum on `<track>` elements). Honoured by the
+   * overlay when the user enables "keepNativeAlignment". Adapters that
+   * cannot extract an alignment leave this `undefined`, in which case the
+   * overlay falls back to its centered default.
+   */
+  align?: 'start' | 'center' | 'end' | 'left' | 'right';
 }
 
 export type CueListener = (cues: SubtitleCue[]) => void;
