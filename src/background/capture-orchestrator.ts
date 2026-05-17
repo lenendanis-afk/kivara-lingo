@@ -53,13 +53,28 @@ function resolveField(field: string, source: FieldSource, ctx: ResolveContext): 
       return ctx.request.token;
     case 'cue':
       return ctx.request.sentence;
+    case 'phonetic':
+      return ctx.phonetic;
+    case 'translation':
     case 'translate':
       return ctx.translation || ctx.bilingual || '';
+    case 'bilingual':
+      return ctx.bilingual || ctx.translation;
+    case 'monolingual':
+      return ctx.monolingual;
+    case 'examples':
+      return ctx.examples.join('<br>');
     case 'dictionary': {
+      // Legacy / deprecated catch-all kept for backward compatibility with
+      // mappings persisted before phonetic/bilingual/monolingual got their
+      // own explicit FieldSource. We sniff the destination field's name to
+      // pick the most reasonable bucket.
       const f = field.toLowerCase();
       if (/phon|ipa|pronun/.test(f)) return ctx.phonetic;
       if (/mono|definition|definición/.test(f)) return ctx.monolingual;
       if (/example|ejemplo|sample/.test(f)) return ctx.examples.join('<br>');
+      if (/bilingual|biling/.test(f)) return ctx.bilingual || ctx.translation;
+      if (/translation|traduccion|traducción/.test(f)) return ctx.translation;
       return ctx.bilingual || ctx.translation;
     }
     case 'ai-definition':
@@ -73,13 +88,16 @@ function resolveField(field: string, source: FieldSource, ctx: ResolveContext): 
     case 'ai-register':
       return ctx.ai?.register ?? '';
     case 'tts':
-      // The wrapper below tries to fill this field with an audio file. If TTS
-      // generation fails we leave the raw text here so Anki can fall back to
-      // its built-in `{{tts <lang>:Field}}` template (configured in the model).
-      return ctx.request.sentence;
+    case 'word-audio':
+      // The wrapper below tries to fill this field with an audio file. If
+      // generation fails we leave the raw text (the word itself for word
+      // audio, the sentence for the legacy `tts` source) so Anki's built-in
+      // `{{tts <lang>:Field}}` template can still synthesise on review.
+      return source === 'word-audio' ? ctx.request.token : ctx.request.sentence;
     case 'manual':
     case 'frame':
     case 'tabCapture':
+    case 'sentence-audio':
       // Media fields — the value is appended by AnkiConnect via `picture`/`audio` arrays.
       return '';
     default:
@@ -202,14 +220,24 @@ export async function createCardFromRequest(
     }
   }
 
-  // Audio — a field can be sourced from the live tab capture (preferred when
-  // available) or from a remote TTS provider as a fallback.
+  // Audio — three flavours:
+  //   sentence-audio (preferred for the cue's full audio, sourced from the
+  //                   live tab-capture buffer),
+  //   word-audio    (TTS of the headword, generated on the fly),
+  //   tabCapture/tts (legacy aliases — same behaviour, kept for backward
+  //                   compatibility with saved mappings).
+  // We attach sentence audio first (it's the higher-quality source) and TTS
+  // as a fallback / separate field when present.
   const audios: AnkiMedia[] = [];
-  const tabCaptureField = fieldMapping.find(([, s]) => s === 'tabCapture')?.[0];
-  const ttsField = fieldMapping.find(([, s]) => s === 'tts')?.[0];
-  const audioField = tabCaptureField ?? ttsField;
-  let attachedAudio = false;
-  if (audioField) {
+  const sentenceAudioField =
+    fieldMapping.find(([, s]) => s === 'sentence-audio')?.[0] ??
+    fieldMapping.find(([, s]) => s === 'tabCapture')?.[0];
+  const wordAudioField =
+    fieldMapping.find(([, s]) => s === 'word-audio')?.[0] ??
+    fieldMapping.find(([, s]) => s === 'tts')?.[0];
+  let sentenceAudioAttached = false;
+  // 1) Sentence audio: prefer the live tab-capture slice.
+  if (sentenceAudioField) {
     const resolved = await resolveAudio(request, capture);
     if (resolved) {
       const filename = safeFilename(request.token, extForMime(resolved.mime));
@@ -223,23 +251,57 @@ export async function createCardFromRequest(
         audios.push({
           filename,
           data: dataUrlToBase64(resolved.dataUrl),
-          fields: [audioField],
+          fields: [sentenceAudioField],
         });
-        attachedAudio = true;
+        sentenceAudioAttached = true;
       } catch (err) {
         const reason = err instanceof Error ? err.message : 'audio';
         warnings.push(`No se pudo guardar el audio: ${reason}`);
       }
-    } else if (tabCaptureField && getAudioCaptureStatus().active === false) {
+    } else if (getAudioCaptureStatus().active === false) {
       warnings.push('La captura de audio no está activa — no se adjuntó audio.');
+    }
+    // If we couldn't grab tab audio, fall through and let TTS synthesise the
+    // sentence — Anki will still play it on review.
+    if (!sentenceAudioAttached) {
+      try {
+        const tts = await generateTtsAudio(request.sentence, request.language ?? 'en');
+        if (tts.ok) {
+          const filename = safeFilename(`${request.token}_sentence`, extForMime(tts.mime));
+          const data = dataUrlToBase64(tts.dataUrl);
+          await ankiConnect.storeMediaFile(filename, data, mapping.ankiUrl, mapping.apiKey);
+          audios.push({ filename, data, fields: [sentenceAudioField] });
+          sentenceAudioAttached = true;
+        }
+      } catch {
+        /* swallow — TTS is best-effort */
+      }
     }
   }
 
-  // TTS field with no live audio — try the OpenAI TTS endpoint. If it works,
-  // attach an MP3 file; otherwise leave the text in the field so Anki's
-  // template `{{tts <lang>:Field}}` can still synthesise on review.
-  if (ttsField && !attachedAudio) {
-    const ttsText = fields[ttsField] || request.sentence;
+  // 2) Word audio: TTS the headword (not the whole sentence).
+  if (wordAudioField) {
+    const headword = ctx.request.token;
+    try {
+      const tts = await generateTtsAudio(headword, request.language ?? 'en');
+      if (tts.ok) {
+        const filename = safeFilename(headword, extForMime(tts.mime));
+        const data = dataUrlToBase64(tts.dataUrl);
+        await ankiConnect.storeMediaFile(filename, data, mapping.ankiUrl, mapping.apiKey);
+        audios.push({ filename, data, fields: [wordAudioField] });
+      }
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : 'word-audio';
+      warnings.push(`TTS palabra: ${reason}`);
+    }
+  }
+
+  // Legacy `tts` source path: only fire when the user mapped a field to the
+  // legacy alias *without* also mapping `sentence-audio`, otherwise we'd
+  // double-attach audio.
+  const legacyTtsField = fieldMapping.find(([, s]) => s === 'tts')?.[0];
+  if (legacyTtsField && legacyTtsField !== wordAudioField && !sentenceAudioAttached) {
+    const ttsText = fields[legacyTtsField] || request.sentence;
     if (ttsText) {
       try {
         const tts = await generateTtsAudio(ttsText, request.language ?? 'en');
@@ -247,7 +309,7 @@ export async function createCardFromRequest(
           const filename = safeFilename(request.token, extForMime(tts.mime));
           const data = dataUrlToBase64(tts.dataUrl);
           await ankiConnect.storeMediaFile(filename, data, mapping.ankiUrl, mapping.apiKey);
-          audios.push({ filename, data, fields: [ttsField] });
+          audios.push({ filename, data, fields: [legacyTtsField] });
         }
       } catch (err) {
         const reason = err instanceof Error ? err.message : 'tts';

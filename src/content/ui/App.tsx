@@ -45,7 +45,13 @@ export function App({ adapter, videoElement, videoOverlayRoot }: AppProps) {
   const [activeCue, setActiveCue] = useState<ActiveCue | null>(null);
   const [saveTick, setSaveTick] = useState<number | null>(null);
   const cueLanguageRef = useRef('en');
-  const wasPlayingRef = useRef(false);
+  // Tracks whether we (not the user, not the platform) requested the current
+  // pause. We only resume if we ourselves paused — otherwise we'd fight with
+  // the platform's own buffer / focus-loss / ad-break pauses.
+  const kivaraPausedRef = useRef(false);
+  // Most-recent hover-change request. Used by the resume watchdog so we don't
+  // resume mid-flight if a new hover starts within a couple of ms.
+  const hoverRevRef = useRef(0);
 
   // Apply the "Limpieza visual" CSS whenever the toggles change. The CSS is
   // platform-aware (the matching selectors live in cleanup-css.ts) so the
@@ -120,23 +126,85 @@ export function App({ adapter, videoElement, videoOverlayRoot }: AppProps) {
   }, [adapter]);
 
   // Pause video while the user is reading a popover; resume on leave.
+  //
+  // The earlier version relied on `wasPlayingRef` + a single synchronous
+  // play()/pause() call, which left the video stuck paused on platforms
+  // (HBO Max specifically) where the play() promise occasionally rejects
+  // because the platform mutates the video element between our pause and
+  // our resume. Two improvements here:
+  //
+  // 1) We listen to the native `play`/`pause` events on the <video>; if the
+  //    user (or platform) hits play themselves we drop ownership so we
+  //    never try to override their action later.
+  // 2) The resume is retried (up to 3 attempts, 120 ms apart) and logs any
+  //    final rejection so the bug is visible in DevTools instead of being
+  //    swallowed.
   const handleTokenHoverChange = useCallback(
     (hovered: boolean) => {
       if (!videoElement) return;
+      hoverRevRef.current += 1;
+      const rev = hoverRevRef.current;
       if (hovered) {
         if (!videoElement.paused) {
-          wasPlayingRef.current = true;
-          videoElement.pause();
-        } else {
-          wasPlayingRef.current = false;
+          kivaraPausedRef.current = true;
+          try {
+            videoElement.pause();
+          } catch (err) {
+            console.warn('[Kivara Lingo] pause() failed', err);
+            kivaraPausedRef.current = false;
+          }
         }
-      } else if (wasPlayingRef.current) {
-        wasPlayingRef.current = false;
-        void videoElement.play().catch(() => {});
+        return;
       }
+      // hovered === false → try to resume, but only if WE paused it.
+      if (!kivaraPausedRef.current) return;
+      let attempts = 0;
+      const tryPlay = () => {
+        // Bail if a new hover happened in the meantime — the user is hovering
+        // a different token and we'd just yank playback out from under them.
+        if (hoverRevRef.current !== rev) return;
+        if (!videoElement || videoElement.paused === false) {
+          kivaraPausedRef.current = false;
+          return;
+        }
+        attempts += 1;
+        const p = videoElement.play();
+        if (p && typeof p.then === 'function') {
+          p.then(() => {
+            kivaraPausedRef.current = false;
+          }).catch((err) => {
+            if (attempts < 3 && hoverRevRef.current === rev) {
+              setTimeout(tryPlay, 120);
+            } else {
+              console.warn(
+                '[Kivara Lingo] could not resume video after hover',
+                err,
+              );
+              kivaraPausedRef.current = false;
+            }
+          });
+        } else {
+          kivaraPausedRef.current = false;
+        }
+      };
+      tryPlay();
     },
     [videoElement],
   );
+
+  // If the user (or the platform) starts playing the video themselves while
+  // we still consider ourselves the pauser, drop ownership so a later hover
+  // doesn't pause-resume on top of their action.
+  useEffect(() => {
+    if (!videoElement) return;
+    const onUserPlay = () => {
+      kivaraPausedRef.current = false;
+    };
+    videoElement.addEventListener('play', onUserPlay);
+    return () => {
+      videoElement.removeEventListener('play', onUserPlay);
+    };
+  }, [videoElement]);
 
   // Bridge runtime messages (from background) → local actions.
   useEffect(() => {

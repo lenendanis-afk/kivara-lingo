@@ -28,19 +28,25 @@ const DEMO_URL = 'https://www.youtube.com/watch?v=arj7oStGLkU';
 const FIELD_HINTS: Array<{ key: string; label: string; suggestions: RegExp[] }> = [
   { key: 'token', label: 'Palabra / token', suggestions: [/word/i, /front/i, /palabra/i, /token/i] },
   { key: 'sentence', label: 'Frase completa', suggestions: [/sentence/i, /context/i, /frase/i] },
-  { key: 'translation', label: 'Traducción', suggestions: [/back/i, /translation/i, /traducci/i, /es/i] },
   { key: 'phonetic', label: 'Fonética / IPA', suggestions: [/phon/i, /ipa/i, /pron/i] },
-  { key: 'frame', label: 'Captura (frame)', suggestions: [/image/i, /picture/i, /frame/i, /screenshot/i] },
-  { key: 'audio', label: 'Audio', suggestions: [/audio/i, /sound/i, /sentence audio/i] },
+  { key: 'translation', label: 'Traducción', suggestions: [/back/i, /translation/i, /traducci/i, /^es$/i] },
+  { key: 'bilingual', label: 'Bilingüe', suggestions: [/biling/i] },
+  { key: 'monolingual', label: 'Monolingüe', suggestions: [/monoling/i, /definition/i, /definici/i] },
+  { key: 'frame', label: 'Picture (frame)', suggestions: [/image/i, /picture/i, /frame/i, /screenshot/i] },
+  { key: 'sentence-audio', label: 'Sentence audio', suggestions: [/sentence.?audio/i, /cue.?audio/i, /audio.*sentence/i] },
+  { key: 'word-audio', label: 'Word audio', suggestions: [/word.?audio/i, /audio.*word/i] },
 ];
 
 const FIELD_TO_SOURCE: Record<string, FieldSource> = {
   token: 'selection',
   sentence: 'cue',
-  translation: 'translate',
-  phonetic: 'dictionary',
+  phonetic: 'phonetic',
+  translation: 'translation',
+  bilingual: 'bilingual',
+  monolingual: 'monolingual',
   frame: 'frame',
-  audio: 'tabCapture',
+  'sentence-audio': 'sentence-audio',
+  'word-audio': 'word-audio',
 };
 
 function fieldSourceToAnkiField(hintKey: string, fieldSources: Record<string, FieldSource>): string {

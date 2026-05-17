@@ -72,6 +72,9 @@ export const DEFAULT_TRANSLATE: TranslateSettings = {
   // https://github.com/thedaviddelta/lingva-translate#instances .
   lingvaUrl: 'https://lingva.thedaviddelta.com',
   cacheTtlDays: 30,
+  // Dual caption (target-language subtitle below the source) is on by default
+  // — matches Language Reactor / Trancy behaviour and the user-provided mock.
+  showDualSubtitle: true,
 };
 
 export const DEFAULT_ASR: AsrSettings = {

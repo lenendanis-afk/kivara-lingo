@@ -11,12 +11,46 @@ export interface SubtitleStyles {
   textShadow: number;
 }
 
+/**
+ * One source of data that can populate a single Anki note field. The names
+ * mirror the labels users see in the field-mapping UI; keep them stable —
+ * persisted mappings refer to them by string.
+ *
+ * The "kivara default" Anki model ships with nine fields (word, phonetic,
+ * sentence, translation, bilingual, monolingual, picture, sentence audio,
+ * word audio); each one has a matching `FieldSource` so a sensible mapping
+ * can be auto-detected.
+ *
+ *  - `selection`      — the token the user hovered / clicked          → word
+ *  - `cue`            — the full subtitle the cue belongs to          → sentence
+ *  - `phonetic`       — IPA pronunciation from the dictionary         → phonetic
+ *  - `translation`    — short translation (remote translator OR dict) → translation
+ *  - `bilingual`      — gram-cat + short bilingual definition         → bilingual
+ *  - `monolingual`    — definition in the source language             → monolingual
+ *  - `examples`       — usage examples joined by <br>                 → (extra)
+ *  - `frame`          — JPG screenshot of the video at the cue        → picture
+ *  - `sentence-audio` — captured tab audio for the full cue           → sentence audio
+ *  - `word-audio`     — TTS audio of the word (or live capture slice) → word audio
+ *  - `dictionary`     — DEPRECATED catch-all for users coming from
+ *                       the legacy mapping; falls back to bilingual.
+ *  - `tabCapture`     — DEPRECATED alias for `sentence-audio`.
+ *  - `tts`            — DEPRECATED alias for `word-audio`.
+ *  - `ai-*`           — premium AI enrichment fields.
+ *  - `manual`         — user fills in the value themselves.
+ */
 export type FieldSource =
   | 'selection'
   | 'cue'
+  | 'phonetic'
+  | 'translation'
+  | 'bilingual'
+  | 'monolingual'
+  | 'examples'
+  | 'frame'
+  | 'sentence-audio'
+  | 'word-audio'
   | 'dictionary'
   | 'translate'
-  | 'frame'
   | 'tabCapture'
   | 'tts'
   | 'ai-definition'
@@ -182,6 +216,12 @@ export interface TranslateSettings {
   lingvaUrl: string;
   /** Cache TTL in days (default 30) */
   cacheTtlDays: number;
+  /**
+   * Render the translated full-sentence as a second subtitle line below the
+   * source caption. Standard dual-caption feature in Language Reactor /
+   * Trancy. Default true.
+   */
+  showDualSubtitle: boolean;
 }
 
 export interface AsrSettings {

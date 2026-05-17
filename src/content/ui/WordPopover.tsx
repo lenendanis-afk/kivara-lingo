@@ -208,6 +208,59 @@ export function WordPopover({
   const isUnknown = kind === 'unknown';
   const isMastered = kind === 'mastered';
 
+  // CEFR level → colour. Mirrors the Common European Framework convention
+  // used by Migaku/Trancy popovers (A1 = beginner green, climbing through
+  // blue / indigo / violet to C2 = rose / advanced).
+  const levelClasses = (level: string | undefined): string => {
+    if (!level) return '';
+    switch (level.toUpperCase()) {
+      case 'A1': return 'text-emerald-300 bg-emerald-500/15 ring-emerald-500/30';
+      case 'A2': return 'text-teal-300 bg-teal-500/15 ring-teal-500/30';
+      case 'B1': return 'text-sky-300 bg-sky-500/15 ring-sky-500/30';
+      case 'B2': return 'text-indigo-300 bg-indigo-500/15 ring-indigo-500/30';
+      case 'C1': return 'text-fuchsia-300 bg-fuchsia-500/15 ring-fuchsia-500/30';
+      case 'C2': return 'text-rose-300 bg-rose-500/15 ring-rose-500/30';
+      default:   return 'text-zinc-300 bg-zinc-500/15 ring-zinc-500/30';
+    }
+  };
+
+  // External-dictionary actions for the Definir / Buscar buttons. These used
+  // to be inert placeholders; now they open useful references in a new tab.
+  const headword = (meta.token || token).trim();
+  const cleanHeadword = headword.replace(/["'‘’“”…]/g, '');
+  const defineUrl =
+    sourceLang && sourceLang.startsWith('en')
+      ? `https://dictionary.cambridge.org/dictionary/english-spanish/${encodeURIComponent(cleanHeadword)}`
+      : `https://www.wordreference.com/${encodeURIComponent((sourceLang || 'en').slice(0, 2))}es/${encodeURIComponent(cleanHeadword)}`;
+  const searchQuery = sentence
+    ? `${cleanHeadword} "${sentence.slice(0, 60)}"`
+    : cleanHeadword;
+  const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(searchQuery)}`;
+
+  const handleSpeak = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    // First try the SpeechSynthesis API directly — it works offline and
+    // doesn't need extension permissions. Fall back to the background's
+    // chrome.tts fallback if the user has it disabled.
+    try {
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        const utter = new SpeechSynthesisUtterance(cleanHeadword);
+        utter.lang = sourceLang || 'en-US';
+        utter.rate = 0.95;
+        window.speechSynthesis.cancel();
+        window.speechSynthesis.speak(utter);
+        return;
+      }
+    } catch {
+      /* fall through */
+    }
+    void sendMessage(
+      'TTS_SPEAK',
+      { text: cleanHeadword, lang: sourceLang || 'en' },
+      'background',
+    ).catch(() => {});
+  };
+
   return (
     <div
       onMouseEnter={onMouseEnter}
@@ -243,7 +296,7 @@ export function WordPopover({
         <div className="flex items-start justify-between gap-3 px-3 pt-2.5 pb-2 border-b border-zinc-800/60">
           <div className="flex items-center gap-2 min-w-0">
             <button
-              onClick={(e) => e.stopPropagation()}
+              onClick={handleSpeak}
               className="w-6 h-6 rounded-full bg-indigo-500/15 hover:bg-indigo-500/25 ring-1 ring-indigo-400/30 text-indigo-300 flex items-center justify-center shrink-0 transition-colors"
               title="Reproducir pronunciación"
             >
@@ -277,8 +330,11 @@ export function WordPopover({
                 </span>
               )}
               {meta.level && (
-                <span className="text-[9px] font-bold uppercase tracking-wider ring-1 px-1 py-px rounded shrink-0 ">
-                  {meta.level}
+                <span
+                  className={`text-[9px] font-bold uppercase tracking-wider ring-1 px-1 py-px rounded shrink-0 ${levelClasses(meta.level)}`}
+                  title={`Nivel CEFR ${meta.level.toUpperCase()}`}
+                >
+                  {meta.level.toUpperCase()}
                 </span>
               )}
               {isSaved && (
@@ -418,9 +474,19 @@ export function WordPopover({
         )}
 
         <div className="flex items-stretch border-t border-zinc-800/60 bg-zinc-900/40">
-          <PopoverAction icon={<BookOpen size={11} />} label="Definir" />
+          <PopoverAction
+            icon={<BookOpen size={11} />}
+            label="Definir"
+            href={defineUrl}
+            title="Abrir en Cambridge / WordReference"
+          />
           <PopoverDivider />
-          <PopoverAction icon={<Search size={11} />} label="Buscar" />
+          <PopoverAction
+            icon={<Search size={11} />}
+            label="Buscar"
+            href={searchUrl}
+            title="Buscar en Google con la frase"
+          />
           <PopoverDivider />
           {isSaved ? (
             <button
@@ -454,10 +520,36 @@ function SkeletonLine({ width }: { width: string }) {
   );
 }
 
-function PopoverAction({ icon, label }: { icon: React.ReactNode; label: string }) {
+function PopoverAction({
+  icon,
+  label,
+  href,
+  title,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  href?: string;
+  title?: string;
+}) {
+  const handle = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (href) {
+      // Open the reference in a new tab — we deliberately don't use
+      // window.open in noopener mode because some hosts intercept that.
+      // chrome.tabs.create would be cleaner but it's not available from a
+      // content script, so the anchor href + target=_blank fallback below
+      // is the safest path.
+      const w = window.open(href, '_blank', 'noopener,noreferrer');
+      if (!w) {
+        // Pop-up blocker bit us — swap to location for a same-tab nav.
+        window.location.href = href;
+      }
+    }
+  };
   return (
     <button
-      onClick={(e) => e.stopPropagation()}
+      onClick={handle}
+      title={title}
       className="flex-1 flex items-center justify-center gap-1 px-2 py-2 text-[10px] font-medium uppercase tracking-wider text-zinc-400 hover:text-indigo-300 hover:bg-zinc-800/50 transition-colors"
     >
       {icon}{label}
