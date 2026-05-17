@@ -569,30 +569,38 @@ export function SubtitleOverlay({
 
         {/* Dual caption — native-language full sentence under the source.
             Prefers the platform's own subtitle track (when available) over
-            an MT round-trip. Sits inside the same pointer-events container
-            so hovering it pauses the video, just like the source line. */}
+            an MT round-trip. Visual style matches the original Figma Make
+            mock (font-medium, tracking-wide, fixed semi-black plate, no
+            italic) and only appears when the source caption is hovered —
+            previously it was permanently visible which clashed with the
+            cleaner mock behaviour. We always render the node so the fade-in
+            animation works; visibility is gated via opacity + pointer-events. */}
         {showDualSubtitle && dualCaptionText && !isReading && (
           <div
             data-kivara-hover-zone="true"
-            className="text-center rounded-md px-4 py-1 mt-1 select-text"
+            className={`mt-2 select-text transition-all duration-200 ease-out ${
+              isHovered
+                ? 'opacity-100 translate-y-0'
+                : 'opacity-0 translate-y-1 pointer-events-none'
+            }`}
             title={
               dualCaptionSource === 'native'
                 ? 'Subtítulo nativo de la plataforma'
                 : 'Traducción automática'
             }
             style={{
-              fontSize: `${Math.max(12, subtitleStyles.fontSize - 4)}px`,
-              color: '#d4d4d8',
-              backgroundColor: backgroundColorWithOpacity,
-              fontWeight: 400,
-              fontStyle: 'italic',
-              textShadow: (() => {
-                const s = subtitleStyles.textShadow;
-                if (s <= 0) return 'none';
-                const a = (s / 100).toFixed(2);
-                const blur = Math.max(2, Math.round(s / 18));
-                return `2px 2px ${blur}px rgba(0,0,0,${a})`;
-              })(),
+              // text-xl in the mock (~20px). We anchor on the user's source
+              // font-size so the bilingual line scales with it; min 14px so
+              // it stays legible at the smallest source sizes.
+              fontSize: `${Math.max(14, Math.round(subtitleStyles.fontSize * 0.6))}px`,
+              fontWeight: 500,
+              letterSpacing: '0.025em',
+              color: '#e5e7eb',
+              backgroundColor: 'rgba(0,0,0,0.5)',
+              padding: '2px 12px',
+              borderRadius: '6px',
+              textShadow: '0 2px 8px rgba(0,0,0,0.9)',
+              textAlign: textAlignment,
             }}
           >
             {dualCaptionText}
