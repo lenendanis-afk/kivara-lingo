@@ -343,6 +343,104 @@ export function App({ adapter, videoElement, videoOverlayRoot }: AppProps) {
     };
   }, [videoElement]);
 
+  // Forward common player keyboard shortcuts (Space, F, M, arrows, K/J/L,
+  // 0–9, …) to the underlying <video> element whenever the keypress
+  // originates from inside Kivara's Shadow DOM. Platforms gate their own
+  // key handlers on focus / event-target; once the user clicks a Kivara
+  // token or the side panel, the player no longer sees its own
+  // shortcuts. By re-dispatching the event on the <video> we let the
+  // platform handle the key as if it had focus all along — Space still
+  // pauses, F still fullscreens, arrows still seek.
+  //
+  // Caveats handled below:
+  //   • Modifier combinations (Ctrl / Alt / Meta) are NEVER forwarded so
+  //     OS shortcuts (Alt+Tab, Ctrl+W…) and our own `chrome.commands`
+  //     (Ctrl+S, Alt+C…) keep working.
+  //   • Typing inside any Kivara <input>/<textarea>/contenteditable is
+  //     left alone — the user is typing a deck name, an API key, etc.
+  //   • The synthetic event we dispatch can't loop because its
+  //     composedPath() doesn't include any Kivara host.
+  useEffect(() => {
+    if (!videoElement) return;
+    const PLAYER_KEYS = new Set<string>([
+      ' ',
+      'Spacebar', // legacy IE
+      'k',
+      'K',
+      'f',
+      'F',
+      'm',
+      'M',
+      'c',
+      'C',
+      't',
+      'T',
+      'i',
+      'I',
+      'j',
+      'J',
+      'l',
+      'L',
+      'ArrowUp',
+      'ArrowDown',
+      'ArrowLeft',
+      'ArrowRight',
+      '0',
+      '1',
+      '2',
+      '3',
+      '4',
+      '5',
+      '6',
+      '7',
+      '8',
+      '9',
+      ',',
+      '.',
+      '<',
+      '>',
+    ]);
+
+    const forward = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (!PLAYER_KEYS.has(e.key)) return;
+
+      const path = e.composedPath();
+      const insideKivara = path.some(
+        (n) =>
+          n instanceof HTMLElement &&
+          (n.id === 'kivara-lingo-host' || n.id === 'kivara-lingo-video-host'),
+      );
+      if (!insideKivara) return;
+
+      const inEditable = path.some(
+        (n) =>
+          n instanceof HTMLInputElement ||
+          n instanceof HTMLTextAreaElement ||
+          (n instanceof HTMLElement && n.isContentEditable),
+      );
+      if (inEditable) return;
+
+      e.preventDefault();
+      e.stopPropagation();
+      const cloned = new KeyboardEvent(e.type, {
+        key: e.key,
+        code: e.code,
+        bubbles: true,
+        cancelable: true,
+        composed: true,
+      });
+      videoElement.dispatchEvent(cloned);
+    };
+
+    window.addEventListener('keydown', forward, { capture: true });
+    window.addEventListener('keyup', forward, { capture: true });
+    return () => {
+      window.removeEventListener('keydown', forward, { capture: true });
+      window.removeEventListener('keyup', forward, { capture: true });
+    };
+  }, [videoElement]);
+
   // Bridge runtime messages (from background) → local actions.
   useEffect(() => {
     const handler = (msg: { type?: string; command?: string }) => {
