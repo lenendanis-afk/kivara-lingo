@@ -9,6 +9,7 @@ import type {
   AiSettings,
 } from '../shared/types';
 import { callAiProvider } from './ai-providers';
+import { decryptSecret } from '../shared/secret-store';
 
 const STORE_KEY = 'kivara-lingo-state';
 
@@ -24,7 +25,17 @@ async function loadAiSettings(): Promise<AiSettings> {
     if (typeof value !== 'string') return DEFAULT_AI;
     const parsed = JSON.parse(value);
     const ai = parsed?.state?.ai ?? parsed?.ai;
-    if (ai && typeof ai === 'object') return { ...DEFAULT_AI, ...ai };
+    if (ai && typeof ai === 'object') {
+      const merged: AiSettings = { ...DEFAULT_AI, ...ai };
+      // Transparent decryption — ciphertext stored in chrome.storage,
+      // plaintext returned to the caller. See secret-store.ts for the
+      // threat model. `decryptSecret` passes plaintext through unchanged
+      // so legacy installs without encrypted keys keep working.
+      if (merged.apiKey) {
+        merged.apiKey = await decryptSecret(merged.apiKey);
+      }
+      return merged;
+    }
   } catch (err) {
     console.warn('[Kivara Lingo] could not read AI settings', err);
   }

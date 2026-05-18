@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage, StateStorage } from 'zustand/middleware';
+import { encryptSecret, decryptSecret, isEncrypted } from './secret-store';
 import type {
   SubtitleStyles,
   AnkiMapping,
@@ -9,6 +10,7 @@ import type {
   TranslateSettings,
   AsrSettings,
   AiSettings,
+  TtsSettings,
   OnboardingState,
 } from './types';
 
@@ -31,8 +33,13 @@ export const DEFAULT_SUBTITLE_STYLES: SubtitleStyles = {
 export const DEFAULT_ANKI_MAPPING: AnkiMapping = {
   ankiUrl: 'http://127.0.0.1:8765',
   apiKey: '',
-  deckName: 'Vocabulario Inglés',
-  modelName: 'Basic',
+  // Empty by default — the onboarding wizard prompts the user to pick a
+  // deck and model from their actual Anki collection. We don't ship
+  // hard-coded defaults like 'Vocabulario Inglés' / 'Basic' because they
+  // confuse the picker (looks like a value is selected when it isn't) and
+  // some users may not have those deck names at all.
+  deckName: '',
+  modelName: '',
   fieldSources: {},
 };
 
@@ -66,6 +73,7 @@ export const DEFAULT_TRANSLATE: TranslateSettings = {
   // Premium chain skips any provider that lacks credentials at call time.
   premiumChain: ['deepl', 'google', 'libretranslate'],
   targetLanguage: 'es',
+  sourceLang: 'en',
   deeplToken: '',
   googleToken: '',
   libreTranslateUrl: 'https://libretranslate.com',
@@ -96,6 +104,34 @@ export const DEFAULT_AI: AiSettings = {
   cacheTtlDays: 30,
 };
 
+export const DEFAULT_TTS: TtsSettings = {
+  // 'auto' picks ElevenLabs if credentials are set, otherwise OpenAI when
+  // the user already has an OpenAI AI provider configured, and finally
+  // falls back to the SpeechSynthesis template (Anki's `{{tts}}`).
+  provider: 'auto',
+  elevenLabsApiKey: '',
+  // "Rachel" — the canonical sample voice on the free tier.
+  elevenLabsVoiceId: '21m00Tcm4TlvDq8ikWAM',
+  // Multilingual v2 supports the languages we care about (EN, ES, FR, …).
+  elevenLabsModelId: 'eleven_multilingual_v2',
+};
+
+/**
+ * Floating panel position. `null` means "use default position" (top-right
+ * corner). When the user drags the panel we persist the new offset here so
+ * the position sticks across reloads/sessions. Coordinates are
+ * **viewport-relative** (top/left CSS), so the panel always lands inside
+ * the visible area regardless of scroll position.
+ */
+export interface PanelPosition {
+  /** Pixels from viewport top */
+  top: number;
+  /** Pixels from viewport left */
+  left: number;
+}
+
+export const DEFAULT_PANEL_POSITION: PanelPosition | null = null;
+
 export const DEFAULT_ONBOARDING: OnboardingState = {
   completed: false,
   completedAt: null,
@@ -114,6 +150,8 @@ export interface KivaraState {
   translate: TranslateSettings;
   asr: AsrSettings;
   ai: AiSettings;
+  tts: TtsSettings;
+  panelPosition: PanelPosition | null;
   onboarding: OnboardingState;
   audioCaptureActive: boolean;
 
@@ -129,44 +167,123 @@ export interface KivaraState {
   setTranslate: (t: TranslateSettings | ((prev: TranslateSettings) => TranslateSettings)) => void;
   setAsr: (a: AsrSettings | ((prev: AsrSettings) => AsrSettings)) => void;
   setAi: (a: AiSettings | ((prev: AiSettings) => AiSettings)) => void;
+  setTts: (t: TtsSettings | ((prev: TtsSettings) => TtsSettings)) => void;
+  setPanelPosition: (p: PanelPosition | null) => void;
   setOnboarding: (o: OnboardingState | ((prev: OnboardingState) => OnboardingState)) => void;
   setAudioCaptureActive: (v: boolean) => void;
   resetSubtitleStyles: () => void;
 }
 
 /**
+ * Fields inside the persisted state JSON that hold sensitive credentials
+ * and must be cipher-text at rest. Anything else is stored plaintext.
+ *
+ * The persist middleware sees only the JSON string we hand it from
+ * `setItem`, so we transform the JSON in place — encrypt these fields on
+ * write, decrypt them on read — keeping the in-memory store plaintext for
+ * the React components.
+ */
+const SECRET_FIELDS: Array<{ section: 'translate' | 'ai' | 'ankiMapping' | 'tts'; field: string }> = [
+  { section: 'translate', field: 'deeplToken' },
+  { section: 'translate', field: 'googleToken' },
+  { section: 'translate', field: 'libreTranslateToken' },
+  { section: 'ai', field: 'apiKey' },
+  { section: 'ankiMapping', field: 'apiKey' },
+  { section: 'tts', field: 'elevenLabsApiKey' },
+];
+
+async function transformSecrets(
+  raw: string,
+  direction: 'encrypt' | 'decrypt',
+): Promise<string> {
+  let parsed: { state?: Record<string, Record<string, unknown>> };
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return raw;
+  }
+  const state = parsed?.state;
+  if (!state || typeof state !== 'object') return raw;
+
+  let mutated = false;
+  for (const { section, field } of SECRET_FIELDS) {
+    const node = state[section];
+    if (!node || typeof node !== 'object') continue;
+    const value = (node as Record<string, unknown>)[field];
+    if (typeof value !== 'string' || !value) continue;
+
+    if (direction === 'encrypt') {
+      // Already encrypted (idempotent on persist tick) — leave alone.
+      if (isEncrypted(value)) continue;
+      const cipher = await encryptSecret(value);
+      (node as Record<string, unknown>)[field] = cipher;
+      mutated = cipher !== value;
+    } else {
+      if (!isEncrypted(value)) continue; // legacy plaintext, pass through
+      const plain = await decryptSecret(value);
+      (node as Record<string, unknown>)[field] = plain;
+      mutated = true;
+    }
+  }
+  if (!mutated) return raw;
+  try {
+    return JSON.stringify(parsed);
+  } catch {
+    return raw;
+  }
+}
+
+/**
  * chrome.storage adapter for zustand's persist middleware. Falls back to localStorage
  * when chrome.storage is unavailable (e.g. when bundling tests).
+ *
+ * Wraps the read/write path with `transformSecrets` so credentials are
+ * encrypted at rest in chrome.storage but plaintext in the React store.
  */
 function makeChromeStorage(area: 'sync' | 'local' = 'sync'): StateStorage {
   return {
     async getItem(name: string): Promise<string | null> {
+      let raw: string | null = null;
       try {
         if (typeof chrome !== 'undefined' && chrome.storage?.[area]) {
           const result = await chrome.storage[area].get(name);
           const value = result[name];
-          return typeof value === 'string' ? value : null;
+          raw = typeof value === 'string' ? value : null;
         }
       } catch {
         // fall through
       }
+      if (raw == null) {
+        try {
+          raw = localStorage.getItem(name);
+        } catch {
+          raw = null;
+        }
+      }
+      if (raw == null) return null;
       try {
-        return localStorage.getItem(name);
+        return await transformSecrets(raw, 'decrypt');
       } catch {
-        return null;
+        return raw;
       }
     },
     async setItem(name: string, value: string): Promise<void> {
+      let toStore = value;
+      try {
+        toStore = await transformSecrets(value, 'encrypt');
+      } catch {
+        toStore = value;
+      }
       try {
         if (typeof chrome !== 'undefined' && chrome.storage?.[area]) {
-          await chrome.storage[area].set({ [name]: value });
+          await chrome.storage[area].set({ [name]: toStore });
           return;
         }
       } catch {
         // fall through
       }
       try {
-        localStorage.setItem(name, value);
+        localStorage.setItem(name, toStore);
       } catch {
         // ignore
       }
@@ -233,6 +350,8 @@ function mergePersisted(persistedState: unknown, currentState: KivaraState): Kiv
     },
     asr: { ...DEFAULT_ASR, ...(persisted.asr ?? {}) },
     ai: { ...DEFAULT_AI, ...(persisted.ai ?? {}) },
+    tts: { ...DEFAULT_TTS, ...(persisted.tts ?? {}) },
+    panelPosition: persisted.panelPosition ?? DEFAULT_PANEL_POSITION,
     onboarding: { ...DEFAULT_ONBOARDING, ...(persisted.onboarding ?? {}) },
   };
 }
@@ -252,6 +371,8 @@ export const useKivaraStore = create<KivaraState>()(
       translate: DEFAULT_TRANSLATE,
       asr: DEFAULT_ASR,
       ai: DEFAULT_AI,
+      tts: DEFAULT_TTS,
+      panelPosition: DEFAULT_PANEL_POSITION,
       onboarding: DEFAULT_ONBOARDING,
       audioCaptureActive: false,
 
@@ -288,6 +409,11 @@ export const useKivaraStore = create<KivaraState>()(
         set((state) => ({
           ai: typeof a === 'function' ? a(state.ai) : a,
         })),
+      setTts: (t) =>
+        set((state) => ({
+          tts: typeof t === 'function' ? t(state.tts) : t,
+        })),
+      setPanelPosition: (p) => set({ panelPosition: p }),
       setOnboarding: (o) =>
         set((state) => ({
           onboarding: typeof o === 'function' ? o(state.onboarding) : o,
@@ -311,6 +437,8 @@ export const useKivaraStore = create<KivaraState>()(
         translate: state.translate,
         asr: state.asr,
         ai: state.ai,
+        tts: state.tts,
+        panelPosition: state.panelPosition,
         onboarding: state.onboarding,
       }),
       // Deep-merge defaults into the persisted slice so a snapshot saved by an

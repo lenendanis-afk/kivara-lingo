@@ -29,6 +29,45 @@
  */
 
 import { encodeWavMono } from './audio-encoder';
+import {
+  WHISPER_MODEL_PRESETS,
+  modelKeyForUrl,
+  type WhisperModelKey,
+} from '../shared/whisper-presets';
+
+export { WHISPER_MODEL_PRESETS, type WhisperModelKey };
+
+/**
+ * Per-model download progress (0–1) reported by `fetchModel`. Subscribers
+ * are notified as the response stream is read so the SettingsTab can
+ * render a progress bar during the first download. Subsequent loads from
+ * `Cache Storage` are instant (they emit a single 1.0 tick).
+ */
+export type ModelProgressListener = (info: {
+  modelKey: WhisperModelKey | null;
+  loadedBytes: number;
+  totalBytes: number;
+  fraction: number;
+  cached: boolean;
+  done: boolean;
+}) => void;
+
+const progressListeners = new Set<ModelProgressListener>();
+
+export function onModelProgress(listener: ModelProgressListener): () => void {
+  progressListeners.add(listener);
+  return () => progressListeners.delete(listener);
+}
+
+function emitProgress(info: Parameters<ModelProgressListener>[0]): void {
+  for (const listener of progressListeners) {
+    try {
+      listener(info);
+    } catch {
+      /* never let a listener break the load */
+    }
+  }
+}
 
 export interface WhisperConfig {
   /** URL of the `whisper.cpp` JS glue (e.g. main.js or whisper.js) */
@@ -131,24 +170,101 @@ async function fetchModel(): Promise<ArrayBuffer> {
       ),
     );
   }
+  const url = activeConfig.modelUrl;
+  const modelKey = modelKeyForUrl(url);
+  const expectedSize =
+    modelKey != null ? WHISPER_MODEL_PRESETS[modelKey].sizeBytes : 0;
+
   const promise = (async () => {
     const cacheName = activeConfig.cacheName ?? DEFAULT_CONFIG.cacheName!;
     const cache = await caches.open(cacheName);
-    const req = new Request(activeConfig.modelUrl, { cache: 'force-cache' });
+    const req = new Request(url, { cache: 'force-cache' });
     let res = await cache.match(req);
-    if (!res) {
-      res = await fetch(activeConfig.modelUrl, { mode: 'cors' });
-      if (!res.ok) {
-        throw new Error(`Whisper model HTTP ${res.status} (${activeConfig.modelUrl})`);
-      }
+
+    if (res) {
+      // Cache hit — emit a single 100 % tick so the UI knows we're done.
+      emitProgress({
+        modelKey,
+        loadedBytes: expectedSize,
+        totalBytes: expectedSize,
+        fraction: 1,
+        cached: true,
+        done: true,
+      });
+      return res.arrayBuffer();
+    }
+
+    res = await fetch(url, { mode: 'cors' });
+    if (!res.ok) {
+      throw new Error(`Whisper model HTTP ${res.status} (${url})`);
+    }
+
+    // Stream the body so we can report progress for the (potentially large)
+    // download. If the server doesn't send Content-Length we fall back to
+    // the preset's expected size.
+    const headerLength = Number(res.headers.get('content-length') ?? 0);
+    const totalBytes = headerLength > 0 ? headerLength : expectedSize;
+    const reader = res.body?.getReader();
+    if (!reader) {
+      // No streaming support — fall back to a single-shot read.
+      emitProgress({ modelKey, loadedBytes: 0, totalBytes, fraction: 0, cached: false, done: false });
+      const buffer = await res.arrayBuffer();
       try {
-        await cache.put(req, res.clone());
+        await cache.put(req, new Response(buffer));
       } catch (err) {
-        // Cache may be full or opaque — we can still use the buffer.
         console.warn('[Kivara Lingo] could not cache Whisper model', err);
       }
+      emitProgress({
+        modelKey,
+        loadedBytes: buffer.byteLength,
+        totalBytes: buffer.byteLength,
+        fraction: 1,
+        cached: false,
+        done: true,
+      });
+      return buffer;
     }
-    return res.arrayBuffer();
+
+    const chunks: Uint8Array[] = [];
+    let received = 0;
+    emitProgress({ modelKey, loadedBytes: 0, totalBytes, fraction: 0, cached: false, done: false });
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      if (value) {
+        chunks.push(value);
+        received += value.byteLength;
+        const fraction = totalBytes > 0 ? Math.min(1, received / totalBytes) : 0;
+        emitProgress({
+          modelKey,
+          loadedBytes: received,
+          totalBytes,
+          fraction,
+          cached: false,
+          done: false,
+        });
+      }
+    }
+    const merged = new Uint8Array(received);
+    let offset = 0;
+    for (const chunk of chunks) {
+      merged.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    try {
+      await cache.put(req, new Response(merged.buffer));
+    } catch (err) {
+      console.warn('[Kivara Lingo] could not cache Whisper model', err);
+    }
+    emitProgress({
+      modelKey,
+      loadedBytes: received,
+      totalBytes: received,
+      fraction: 1,
+      cached: false,
+      done: true,
+    });
+    return merged.buffer;
   })();
   modelBufferPromise = promise;
   promise.catch(() => {

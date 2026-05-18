@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { sendMessage } from 'webext-bridge/popup';
+import { sendMessage } from 'webext-bridge/options';
 import {
   CheckCircle2, AlertTriangle, Loader2, Play, ChevronRight, ChevronLeft, ExternalLink,
 } from 'lucide-react';
 import { KivaraLingoLogo } from '../app/components/KivaraLingoLogo';
 import { useKivaraStore } from '../shared/store';
+import { autoMapFields, detectFieldSource } from '../shared/anki-field-detect';
 import type {
   AiProvider,
   AnkiPingResponse,
@@ -24,38 +25,6 @@ const STEPS: { id: StepId; label: string }[] = [
 ];
 
 const DEMO_URL = 'https://www.youtube.com/watch?v=arj7oStGLkU';
-
-const FIELD_HINTS: Array<{ key: string; label: string; suggestions: RegExp[] }> = [
-  { key: 'token', label: 'Palabra / token', suggestions: [/word/i, /front/i, /palabra/i, /token/i] },
-  { key: 'sentence', label: 'Frase completa', suggestions: [/sentence/i, /context/i, /frase/i] },
-  { key: 'phonetic', label: 'Fonética / IPA', suggestions: [/phon/i, /ipa/i, /pron/i] },
-  { key: 'translation', label: 'Traducción', suggestions: [/back/i, /translation/i, /traducci/i, /^es$/i] },
-  { key: 'bilingual', label: 'Bilingüe', suggestions: [/biling/i] },
-  { key: 'monolingual', label: 'Monolingüe', suggestions: [/monoling/i, /definition/i, /definici/i] },
-  { key: 'frame', label: 'Picture (frame)', suggestions: [/image/i, /picture/i, /frame/i, /screenshot/i] },
-  { key: 'sentence-audio', label: 'Sentence audio', suggestions: [/sentence.?audio/i, /cue.?audio/i, /audio.*sentence/i] },
-  { key: 'word-audio', label: 'Word audio', suggestions: [/word.?audio/i, /audio.*word/i] },
-];
-
-const FIELD_TO_SOURCE: Record<string, FieldSource> = {
-  token: 'selection',
-  sentence: 'cue',
-  phonetic: 'phonetic',
-  translation: 'translation',
-  bilingual: 'bilingual',
-  monolingual: 'monolingual',
-  frame: 'frame',
-  'sentence-audio': 'sentence-audio',
-  'word-audio': 'word-audio',
-};
-
-function fieldSourceToAnkiField(hintKey: string, fieldSources: Record<string, FieldSource>): string {
-  const src = FIELD_TO_SOURCE[hintKey] ?? 'manual';
-  for (const [field, s] of Object.entries(fieldSources)) {
-    if (s === src) return field;
-  }
-  return '';
-}
 
 export function Onboarding() {
   const {
@@ -113,25 +82,13 @@ export function Onboarding() {
       const r = (await sendMessage('ANKI_FIELDS', { url, apiKey, modelName }, 'background')) as AnkiFieldsResponse;
       if (r.fields?.length) {
         setFields(r.fields);
-        // Only auto-fill mapping slots the user hasn't already configured —
-        // explicit choices must survive a model change.
-        const userMapped = new Set(Object.keys(ankiMapping.fieldSources));
-        const usedSources = new Set(Object.values(ankiMapping.fieldSources));
-        const suggested: Record<string, FieldSource> = {};
-        for (const hint of FIELD_HINTS) {
-          const src: FieldSource = FIELD_TO_SOURCE[hint.key] ?? 'manual';
-          if (usedSources.has(src)) continue;
-          const match = r.fields.find((f) => !userMapped.has(f) && hint.suggestions.some((s) => s.test(f)));
-          if (match) {
-            suggested[match] = src;
-            userMapped.add(match);
-            usedSources.add(src);
-          }
-        }
+        // Use the same `detectFieldSource` regex that the main CardsTab uses
+        // so mapping is consistent. Preserves any existing manual overrides.
+        const mapped = autoMapFields(r.fields, ankiMapping.fieldSources);
         setAnkiMapping({
           ...ankiMapping,
           modelName,
-          fieldSources: { ...ankiMapping.fieldSources, ...suggested },
+          fieldSources: mapped,
         });
       } else {
         setFields([]);
@@ -154,6 +111,27 @@ export function Onboarding() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step]);
+
+  // Free-text "create new" toggles for deck / model. By default we hide the
+  // raw text inputs and only show the dropdowns — the form is much cleaner
+  // and the most common path (pick from existing) doesn't need them. The
+  // user opts into typing a brand-new name only when they want one.
+  const [deckCreateMode, setDeckCreateMode] = useState(false);
+  const [modelCreateMode, setModelCreateMode] = useState(false);
+
+  // If the persisted deck/model name doesn't appear in the lists once they
+  // load, switch into "create" mode automatically so the value stays
+  // visible and editable.
+  useEffect(() => {
+    if (decks && ankiMapping.deckName && !decks.includes(ankiMapping.deckName)) {
+      setDeckCreateMode(true);
+    }
+  }, [decks, ankiMapping.deckName]);
+  useEffect(() => {
+    if (models && ankiMapping.modelName && !models.includes(ankiMapping.modelName)) {
+      setModelCreateMode(true);
+    }
+  }, [models, ankiMapping.modelName]);
 
   function next() {
     const idx = STEPS.findIndex((s) => s.id === step);
@@ -254,7 +232,7 @@ export function Onboarding() {
                 type="text"
                 value={url}
                 onChange={(e) => setAnkiMapping({ ...ankiMapping, ankiUrl: e.target.value })}
-                className="sl-input w-full text-sm px-3 py-2 rounded border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900"
+                className="sl-input sl-lg"
               />
             </Row>
             <div className="flex items-center gap-3">
@@ -287,103 +265,183 @@ export function Onboarding() {
           <Section title="Mazo, modelo y campos" subtitle="Elegimos dónde guardar tus tarjetas y cómo nombrar cada campo.">
             <Row label="Mazo destino">
               <div className="flex gap-2">
-                <select
-                  value={
-                    decks && decks.includes(ankiMapping.deckName) ? ankiMapping.deckName : ''
-                  }
-                  onChange={(e) => setAnkiMapping({ ...ankiMapping, deckName: e.target.value })}
-                  disabled={!decks || decks.length === 0}
-                  className="sl-select flex-1 text-sm px-3 py-2 rounded border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 disabled:opacity-50"
-                >
-                  <option value="">— Selecciona un mazo —</option>
-                  {(decks || []).map((d) => (
-                    <option key={d} value={d}>
-                      {d}
+                {deckCreateMode ? (
+                  <input
+                    type="text"
+                    autoFocus
+                    value={ankiMapping.deckName}
+                    onChange={(e) => setAnkiMapping({ ...ankiMapping, deckName: e.target.value })}
+                    placeholder="Nombre del nuevo mazo"
+                    className="sl-input sl-lg flex-1"
+                  />
+                ) : (
+                  <select
+                    value={
+                      decks && decks.includes(ankiMapping.deckName) ? ankiMapping.deckName : ''
+                    }
+                    onChange={(e) => setAnkiMapping({ ...ankiMapping, deckName: e.target.value })}
+                    disabled={!decks || decks.length === 0}
+                    className="sl-select sl-lg flex-1"
+                  >
+                    <option value="">
+                      {decks && decks.length > 0
+                        ? '— Selecciona un mazo —'
+                        : 'Sin mazos disponibles'}
                     </option>
-                  ))}
-                  {/* Preserve any deck name that doesn't yet exist on the
-                      AnkiConnect side (we'll create it on first card save). */}
-                  {ankiMapping.deckName && decks && !decks.includes(ankiMapping.deckName) && (
-                    <option value={ankiMapping.deckName}>
-                      {ankiMapping.deckName} (nuevo)
-                    </option>
-                  )}
-                </select>
+                    {(decks || []).map((d) => (
+                      <option key={d} value={d}>
+                        {d}
+                      </option>
+                    ))}
+                    {/* Preserve any deck name that doesn't yet exist on the
+                        AnkiConnect side (we'll create it on first card save). */}
+                    {ankiMapping.deckName && decks && !decks.includes(ankiMapping.deckName) && (
+                      <option value={ankiMapping.deckName}>
+                        {ankiMapping.deckName} (nuevo)
+                      </option>
+                    )}
+                  </select>
+                )}
                 <button
                   onClick={loadDecksAndModels}
                   disabled={busy}
-                  className="px-3 py-2 text-[12px] rounded border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-50"
+                  title="Recargar mazos desde Anki"
+                  className="h-10 px-4 text-[12px] font-medium rounded-md border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-50 transition-colors"
                 >
                   Refrescar
                 </button>
               </div>
-              <input
-                type="text"
-                value={ankiMapping.deckName}
-                onChange={(e) => setAnkiMapping({ ...ankiMapping, deckName: e.target.value })}
-                placeholder="O escribe un nombre nuevo (se creará al guardar)"
-                className="sl-input w-full text-[11px] px-3 py-1.5 mt-1 rounded border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/50 text-zinc-600 dark:text-zinc-300"
-              />
+              <button
+                type="button"
+                onClick={() => {
+                  if (deckCreateMode) {
+                    // Returning to the dropdown — keep the typed name only if
+                    // it matches one that exists; otherwise clear so the
+                    // placeholder shows again.
+                    setDeckCreateMode(false);
+                    if (decks && !decks.includes(ankiMapping.deckName)) {
+                      setAnkiMapping({ ...ankiMapping, deckName: '' });
+                    }
+                  } else {
+                    setDeckCreateMode(true);
+                  }
+                }}
+                className="text-[12px] text-indigo-600 dark:text-indigo-400 hover:underline mt-1.5 self-start"
+              >
+                {deckCreateMode ? '← Elegir un mazo existente' : '+ Crear un mazo nuevo'}
+              </button>
             </Row>
 
             <Row label="Modelo de nota">
-              <select
-                value={ankiMapping.modelName}
-                onChange={(e) => {
-                  const m = e.target.value;
-                  setAnkiMapping({ ...ankiMapping, modelName: m });
-                  if (m) void loadFields(m);
-                }}
-                disabled={!models || models.length === 0}
-                className="sl-select w-full text-sm px-3 py-2 rounded border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 disabled:opacity-50"
-              >
-                <option value="">— Selecciona un modelo —</option>
-                {(models || (ankiMapping.modelName ? [ankiMapping.modelName] : [])).map((m) => (
-                  <option key={m} value={m}>
-                    {m}
+              {modelCreateMode ? (
+                <input
+                  type="text"
+                  autoFocus
+                  value={ankiMapping.modelName}
+                  onChange={(e) => setAnkiMapping({ ...ankiMapping, modelName: e.target.value })}
+                  placeholder="Nombre del nuevo modelo"
+                  className="sl-input sl-lg"
+                />
+              ) : (
+                <select
+                  value={ankiMapping.modelName}
+                  onChange={(e) => {
+                    const m = e.target.value;
+                    setAnkiMapping({ ...ankiMapping, modelName: m });
+                    if (m) void loadFields(m);
+                  }}
+                  disabled={!models || models.length === 0}
+                  className="sl-select sl-lg"
+                >
+                  <option value="">
+                    {models && models.length > 0
+                      ? '— Selecciona un modelo —'
+                      : 'Sin modelos disponibles'}
                   </option>
-                ))}
-              </select>
-              {busy && (
-                <span className="inline-flex items-center gap-1 text-[10px] text-zinc-500 dark:text-zinc-400 mt-1">
-                  <Loader2 size={10} className="animate-spin" /> cargando…
-                </span>
+                  {(models || (ankiMapping.modelName ? [ankiMapping.modelName] : [])).map((m) => (
+                    <option key={m} value={m}>
+                      {m}
+                    </option>
+                  ))}
+                </select>
               )}
+              <div className="flex items-center gap-3 mt-1.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (modelCreateMode) {
+                      setModelCreateMode(false);
+                      if (models && !models.includes(ankiMapping.modelName)) {
+                        setAnkiMapping({ ...ankiMapping, modelName: '' });
+                      }
+                    } else {
+                      setModelCreateMode(true);
+                    }
+                  }}
+                  className="text-[12px] text-indigo-600 dark:text-indigo-400 hover:underline"
+                >
+                  {modelCreateMode ? '← Elegir un modelo existente' : '+ Usar un modelo nuevo'}
+                </button>
+                {busy && (
+                  <span className="inline-flex items-center gap-1.5 text-[11px] text-zinc-500 dark:text-zinc-400">
+                    <Loader2 size={11} className="animate-spin" /> cargando…
+                  </span>
+                )}
+              </div>
             </Row>
 
             {fields && fields.length > 0 && (
-              <div className="space-y-2 mt-3">
-                <p className="text-[11px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400 font-semibold">
-                  Mapeo de campos
-                </p>
-                {FIELD_HINTS.map((hint) => (
-                  <Row key={hint.key} label={hint.label}>
-                    <select
-                      value={fieldSourceToAnkiField(hint.key, ankiMapping.fieldSources)}
-                      onChange={(e) => {
-                        const src: FieldSource = FIELD_TO_SOURCE[hint.key] ?? 'manual';
-                        const updated = { ...ankiMapping.fieldSources };
-                        // Remove any old mapping for this source
-                        for (const [k, v] of Object.entries(updated)) {
-                          if (v === src) delete updated[k];
-                        }
-                        if (e.target.value) updated[e.target.value] = src;
-                        setAnkiMapping({ ...ankiMapping, fieldSources: updated });
-                      }}
-                      className="sl-select w-full text-sm px-3 py-2 rounded border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900"
-                    >
-                      <option value="">— No mapear —</option>
-                      {fields.map((f) => (
-                        <option key={f} value={f}>
-                          {f}
-                        </option>
-                      ))}
-                    </select>
-                  </Row>
-                ))}
-                <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
-                  Los campos sin mapear se ignoran al crear la tarjeta.
-                </p>
+              <div className="space-y-3 mt-6 pt-6 border-t border-zinc-200 dark:border-zinc-800">
+                <header className="space-y-1">
+                  <p className="text-[12px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400 font-semibold">
+                    Mapeo de campos
+                  </p>
+                  <p className="text-[13px] text-zinc-500 dark:text-zinc-400">
+                    Cada campo de Anki se asignó automáticamente. Puedes cambiar cualquiera con el selector.
+                  </p>
+                </header>
+                <div className="space-y-2">
+                  {fields.map((field) => {
+                    const current: FieldSource = ankiMapping.fieldSources[field] ?? 'manual';
+                    const isAuto = current === detectFieldSource(field);
+                    return (
+                      <div key={field} className="flex items-center gap-3">
+                        <span className="flex-1 min-w-0 text-[13px] font-medium text-zinc-800 dark:text-zinc-200 truncate">
+                          {field}
+                          {isAuto && (
+                            <span className="ml-1.5 text-[9px] text-indigo-400 dark:text-indigo-500 font-normal">auto</span>
+                          )}
+                        </span>
+                        <select
+                          value={current}
+                          onChange={(e) => {
+                            const next = { ...ankiMapping.fieldSources };
+                            const src = e.target.value as FieldSource;
+                            if (src === 'manual') {
+                              delete next[field];
+                            } else {
+                              next[field] = src;
+                            }
+                            setAnkiMapping({ ...ankiMapping, fieldSources: next });
+                          }}
+                          className="sl-select text-[12px] w-[180px] px-2 py-1.5 rounded border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-200"
+                        >
+                          <option value="manual">— No mapear —</option>
+                          <option value="selection">Palabra</option>
+                          <option value="cue">Frase completa</option>
+                          <option value="phonetic">Fonética / IPA</option>
+                          <option value="translation">Traducción</option>
+                          <option value="bilingual">Bilingüe</option>
+                          <option value="monolingual">Monolingüe</option>
+                          <option value="examples">Ejemplos</option>
+                          <option value="frame">Picture (frame)</option>
+                          <option value="sentence-audio">Sentence audio</option>
+                          <option value="word-audio">Word audio</option>
+                        </select>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             )}
           </Section>
@@ -405,7 +463,7 @@ export function Onboarding() {
                 <select
                   value={ai.provider}
                   onChange={(e) => setAi({ ...ai, provider: e.target.value as AiProvider })}
-                  className="sl-select w-full text-sm px-3 py-2 rounded border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900"
+                  className="sl-select sl-lg"
                 >
                   <option value="disabled">Desactivado (omitir paso)</option>
                   <option value="openai">OpenAI</option>
@@ -421,7 +479,7 @@ export function Onboarding() {
                       value={ai.apiKey}
                       onChange={(e) => setAi({ ...ai, apiKey: e.target.value })}
                       placeholder="sk-... / Anthropic / Gemini API key"
-                      className="sl-input w-full text-sm px-3 py-2 rounded border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900"
+                      className="sl-input sl-lg"
                     />
                   </Row>
                   <Row label="Modelo">
@@ -434,7 +492,7 @@ export function Onboarding() {
                         : ai.provider === 'anthropic' ? 'claude-3-5-haiku-latest'
                         : 'gemini-1.5-flash'
                       }
-                      className="sl-input w-full text-sm px-3 py-2 rounded border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900"
+                      className="sl-input sl-lg"
                     />
                   </Row>
                   <div className="flex flex-col gap-2">
@@ -530,20 +588,22 @@ export function Onboarding() {
 
 function Section({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
   return (
-    <section className="space-y-3">
-      <header>
-        <h2 className="text-xl font-semibold">{title}</h2>
-        {subtitle && <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-1">{subtitle}</p>}
+    <section className="space-y-6">
+      <header className="space-y-1.5">
+        <h2 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">{title}</h2>
+        {subtitle && <p className="text-[13px] leading-relaxed text-zinc-500 dark:text-zinc-400">{subtitle}</p>}
       </header>
-      <div className="space-y-3 pt-2">{children}</div>
+      <div className="space-y-5">{children}</div>
     </section>
   );
 }
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="space-y-1">
-      <label className="text-[12px] font-medium text-zinc-700 dark:text-zinc-300">{label}</label>
+    <div className="space-y-1.5">
+      <label className="block text-[13px] font-semibold text-zinc-800 dark:text-zinc-200">
+        {label}
+      </label>
       {children}
     </div>
   );

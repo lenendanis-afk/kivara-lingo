@@ -233,12 +233,41 @@ export function WordPopover({
       ? `https://dictionary.cambridge.org/dictionary/english-spanish/${encodeURIComponent(cleanHeadword)}`
       : `https://www.wordreference.com/${encodeURIComponent((sourceLang || 'en').slice(0, 2))}es/${encodeURIComponent(cleanHeadword)}`;
   const searchQuery = sentence
-    ? `${cleanHeadword} "${sentence.slice(0, 60)}"`
-    : cleanHeadword;
+    ? `${headword} "${sentence.slice(0, 60)}"`
+    : headword;
   const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(searchQuery)}`;
+
+  // Suppress the default focus behaviour of every popover button. By
+  // default a `mousedown` on a `<button>` makes it the focused element;
+  // once Kivara owns focus the streaming platforms (HBO Max, Netflix…)
+  // stop seeing keyboard shortcuts. Calling `preventDefault()` on the
+  // mousedown phase keeps focus exactly where it was (the page body or
+  // the platform's own player root), so Space, F, K, arrows, etc. keep
+  // working without any extra plumbing.
+  const blockFocusSteal = (e: React.MouseEvent) => {
+    e.preventDefault();
+  };
+
+  // Release focus back to the page after any popover button click. Without
+  // this the button keeps focus, and player keyboard shortcuts (Space to
+  // pause, F to fullscreen, arrows to seek) get consumed by the button
+  // (Space activates focused buttons by default) instead of being forwarded
+  // to the underlying <video>. Calling blur() returns focus to <body>, which
+  // is exactly what every streaming platform expects.
+  const releaseFocus = (e: React.MouseEvent) => {
+    const el = e.currentTarget as Element & { blur?: () => void };
+    if (typeof el.blur === 'function') {
+      try {
+        el.blur();
+      } catch {
+        /* no-op — element may have been removed by the click handler */
+      }
+    }
+  };
 
   const handleSpeak = (e: React.MouseEvent) => {
     e.stopPropagation();
+    releaseFocus(e);
     // First try the SpeechSynthesis API directly — it works offline and
     // doesn't need extension permissions. Fall back to the background's
     // chrome.tts fallback if the user has it disabled.
@@ -279,7 +308,7 @@ export function WordPopover({
           '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
         textAlign: 'left',
         width: '280px',
-        maxWidth: 'min(320px, calc(100vw - 32px))',
+        maxWidth: 'calc(100vw - 32px)',
         zIndex: 2147483646,
       }}
     >
@@ -297,6 +326,8 @@ export function WordPopover({
         <div className="flex items-start justify-between gap-3 px-3 pt-2.5 pb-2 border-b border-zinc-800/60">
           <div className="flex items-center gap-2 min-w-0">
             <button
+              tabIndex={-1}
+              onMouseDown={blockFocusSteal}
               onClick={handleSpeak}
               className="w-6 h-6 rounded-full bg-indigo-500/15 hover:bg-indigo-500/25 ring-1 ring-indigo-400/30 text-indigo-300 flex items-center justify-center shrink-0 transition-colors"
               title="Reproducir pronunciación"
@@ -369,14 +400,28 @@ export function WordPopover({
               {meta.monolingual}
             </div>
           )}
+          {/* Frase actual del subtítulo, con la palabra resaltada al
+              estilo Inglés.com / Trancy / Language Reactor. Muestra al
+              usuario en qué contexto exacto aparece la palabra para que
+              la entienda en uso, no solo como entrada de diccionario.
+              Solo se renderiza cuando hay una `sentence` distinta del
+              propio token (cuando el usuario hover una sola palabra). */}
+          {sentence && sentence.trim() && sentence.trim().toLowerCase() !== headword.toLowerCase() && (
+            <div className="mt-2 text-[11px] text-zinc-200 leading-snug normal-case border-l-2 border-indigo-500/50 pl-2 bg-indigo-500/5 py-1 rounded-r">
+              {renderSentenceWithHighlight(sentence, headword)}
+            </div>
+          )}
           {meta.examples && meta.examples.length > 0 && (
             <div className="mt-1.5 space-y-1">
+              <div className="text-[9px] uppercase tracking-wider text-zinc-500 font-semibold">
+                Ejemplos
+              </div>
               {meta.examples.slice(0, 2).map((ex, i) => (
                 <div
                   key={i}
                   className="text-[11px] text-zinc-300/90 leading-snug normal-case border-l-2 border-amber-700/40 pl-2"
                 >
-                  {ex}
+                  {renderSentenceWithHighlight(ex, headword)}
                 </div>
               ))}
             </div>
@@ -456,7 +501,9 @@ export function WordPopover({
 
         {isMWE && (
           <button
-            onClick={(e) => { e.stopPropagation(); onToggleExpand(); }}
+            tabIndex={-1}
+            onMouseDown={blockFocusSteal}
+            onClick={(e) => { e.stopPropagation(); releaseFocus(e); onToggleExpand(); }}
             className="w-full flex items-center justify-between gap-2 px-3 py-1.5 text-[10px] font-medium text-zinc-400 hover:text-indigo-300 bg-zinc-900/60 border-t border-zinc-800/60 transition-colors"
           >
             <span className="flex items-center gap-1.5">
@@ -472,7 +519,9 @@ export function WordPopover({
 
         {parentMWE && !isMWE && (
           <button
-            onClick={(e) => { e.stopPropagation(); onRejoinParent(parentMWE); }}
+            tabIndex={-1}
+            onMouseDown={blockFocusSteal}
+            onClick={(e) => { e.stopPropagation(); releaseFocus(e); onRejoinParent(parentMWE); }}
             className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 text-[10px] font-medium text-amber-300 hover:text-amber-200 bg-amber-500/10 hover:bg-amber-500/15 border-t border-amber-500/20 transition-colors"
           >
             <Link2 size={10} />
@@ -497,7 +546,9 @@ export function WordPopover({
           <PopoverDivider />
           {isSaved ? (
             <button
-              onClick={(e) => e.stopPropagation()}
+              tabIndex={-1}
+              onMouseDown={blockFocusSteal}
+              onClick={(e) => { e.stopPropagation(); releaseFocus(e); }}
               className="flex-1 flex items-center justify-center gap-1 px-2 py-2 text-[11px] font-semibold text-emerald-300 bg-emerald-500/10 hover:bg-emerald-500/15 transition-colors normal-case"
               title="Esta tarjeta ya está en tu mazo"
             >
@@ -505,7 +556,9 @@ export function WordPopover({
             </button>
           ) : (
             <button
-              onClick={(e) => onSave(e, meta.token || token)}
+              tabIndex={-1}
+              onMouseDown={blockFocusSteal}
+              onClick={(e) => { releaseFocus(e); onSave(e, meta.token || token); }}
               className="flex-1 flex items-center justify-center gap-1 px-2 py-2 text-[11px] font-semibold text-white bg-indigo-600 hover:bg-indigo-500 transition-colors normal-case"
             >
               <Plus size={12} /> Guardar
@@ -538,23 +591,32 @@ function PopoverAction({
   href?: string;
   title?: string;
 }) {
-  const handle = (e: React.MouseEvent) => {
+  const handle = (e: React.MouseEvent<HTMLButtonElement>) => {
     e.stopPropagation();
+    // Drop focus immediately so player keys (Space, F, arrows…) keep
+    // working when the user returns to the tab.
+    try {
+      e.currentTarget.blur();
+    } catch {
+      /* ignore */
+    }
     if (href) {
-      // Open the reference in a new tab — we deliberately don't use
-      // window.open in noopener mode because some hosts intercept that.
-      // chrome.tabs.create would be cleaner but it's not available from a
-      // content script, so the anchor href + target=_blank fallback below
-      // is the safest path.
-      const w = window.open(href, '_blank', 'noopener,noreferrer');
-      if (!w) {
-        // Pop-up blocker bit us — swap to location for a same-tab nav.
-        window.location.href = href;
+      // Use chrome.runtime.sendMessage to ask the service worker to open
+      // a new tab. This avoids window.open which YouTube/HBO intercept
+      // and navigate in-page (breaking playback). The SW has chrome.tabs
+      // access. If that fails (e.g. in dev mode without SW) fall back to
+      // window.open with _blank.
+      try {
+        chrome.runtime.sendMessage({ type: 'OPEN_URL', url: href });
+      } catch {
+        window.open(href, '_blank', 'noopener,noreferrer');
       }
     }
   };
   return (
     <button
+      tabIndex={-1}
+      onMouseDown={(e) => e.preventDefault()}
       onClick={handle}
       title={title}
       className="flex-1 flex items-center justify-center gap-1 px-2 py-2 text-[10px] font-medium uppercase tracking-wider text-zinc-400 hover:text-indigo-300 hover:bg-zinc-800/50 transition-colors"
@@ -566,6 +628,48 @@ function PopoverAction({
 
 function PopoverDivider() {
   return <div className="w-px bg-zinc-800/80" />;
+}
+
+/**
+ * Render a sentence with one or more occurrences of `term` highlighted in
+ * indigo (matches the popover's accent palette). Case-insensitive,
+ * whole-word so "tonight" doesn't also match the "ton" inside another word.
+ *
+ * The match is anchored on the lowercased token; the original casing of the
+ * sentence is preserved in the rendered output. Multi-word terms (MWE like
+ * "these days") are handled by escaping spaces in the regex.
+ */
+function renderSentenceWithHighlight(sentence: string, term: string): React.ReactNode {
+  const cleanTerm = term.trim();
+  if (!cleanTerm) return sentence;
+  // Escape any regex metacharacters in the term itself.
+  const escaped = cleanTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  // For a multi-word MWE we accept any whitespace between the words.
+  const pattern = escaped.replace(/\s+/g, '\\s+');
+  let splitter: RegExp;
+  let matcher: RegExp;
+  try {
+    splitter = new RegExp(`(${pattern})`, 'gi');
+    matcher = new RegExp(`^${pattern}$`, 'i');
+  } catch {
+    // Defensive — shouldn't happen with the escaping above, but if the
+    // regex engine ever rejects we fall back to plain text.
+    return sentence;
+  }
+  const parts = sentence.split(splitter);
+  if (parts.length === 1) return sentence;
+  return parts.map((part, i) =>
+    matcher.test(part) ? (
+      <span
+        key={i}
+        className="font-semibold text-indigo-300 bg-indigo-500/15 rounded px-0.5"
+      >
+        {part}
+      </span>
+    ) : (
+      <React.Fragment key={i}>{part}</React.Fragment>
+    ),
+  );
 }
 
 /**

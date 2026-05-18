@@ -1336,9 +1336,9 @@
     "token": "because",
     "type": "word",
     "level": "A1",
-    "translation": "<g id=\"1\">individual, </g> <g id=\"2\">pues </g>",
+    "translation": "porque",
     "phonetic": "/bɪkəz/",
-    "bilingual": "(conj.) <g id=\"1\">individual, </g> <g id=\"2\">pues </g>",
+    "bilingual": "(conj.) porque, ya que",
     "monolingual": "By or for the cause that; on this account that; for the reason that.",
     "examples": [
       "I hid myself because I was afraid."
@@ -2609,9 +2609,9 @@
     "token": "claims",
     "type": "word",
     "level": "A2",
-    "translation": "<g id=\"Bold\"><g id=\"Underline\">REIVINDICACIONES</g></g>",
+    "translation": "reivindicaciones",
     "phonetic": "/kleɪmz/",
-    "bilingual": "(sust.) <g id=\"Bold\"><g id=\"Underline\">REIVINDICACIONES</g></g>",
+    "bilingual": "(sust. pl.) reivindicaciones, reclamos",
     "monolingual": "plural of claim"
   },
   "class": {
@@ -7887,8 +7887,9 @@
     "token": "la",
     "type": "word",
     "level": "A2",
-    "translation": "<g id=\"Bold\">1<g id=\"Superscript\">a</g></g>",
+    "translation": "la",
     "phonetic": "/lɑː/",
+    "bilingual": "(art. f. sg.) la",
     "monolingual": "ISO 639-1 language code for Latin.",
     "examples": [
       "\"La la la la, I can't hear you!\" Jimmy said, sticking his fingers in his ears."

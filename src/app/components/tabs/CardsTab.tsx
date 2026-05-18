@@ -28,23 +28,10 @@ const FALLBACK_FIELDS: Record<string, string[]> = {
   'Basic': ['Front', 'Back'],
 };
 
-function detectSource(fieldName: string): FieldSource {
-  const n = fieldName.toLowerCase().trim();
-  // Audio first — most specific.
-  if (/audio/.test(n)) {
-    if (/word|palabra|term/.test(n)) return 'word-audio';
-    return 'sentence-audio'; // default: cue/sentence audio
-  }
-  if (/picture|image|imagen|frame|screenshot/.test(n)) return 'frame';
-  if (/phon|ipa|pronun/.test(n)) return 'phonetic';
-  if (/monoling|definition|definición|meaning|sentido/.test(n)) return 'monolingual';
-  if (/biling/.test(n)) return 'bilingual';
-  if (/example|ejemplo/.test(n)) return 'examples';
-  if (/translation|traduccion|traducción|native|spanish|español/.test(n)) return 'translation';
-  if (/sentence|frase|context|cue|reverso|extra/.test(n)) return 'cue';
-  if (/word|palabra|term|anverso|texto|front/.test(n)) return 'selection';
-  return 'manual';
-}
+import { detectFieldSource } from '../../../shared/anki-field-detect';
+
+// Use the shared detector — no duplicate regex here.
+const detectSource = detectFieldSource;
 
 const SOURCE_META: Record<FieldSource, { label: string; color: string; description: string }> = {
   selection:        { label: 'Palabra',       color: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300',     description: 'Palabra seleccionada (el headword)' },

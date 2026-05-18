@@ -216,6 +216,23 @@
   /* Mono variant — for endpoints, paths */
   .sl-input.sl-mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10.5px; }
 
+  /* Large variant — used in onboarding & full-page surfaces where the
+     11px / 30px-tall default looks cramped. Keeps the same chrome but
+     gives text room to breathe (descenders, capitals, dropdown chevron). */
+  .sl-input.sl-lg,
+  .sl-select.sl-lg {
+    height: 40px;
+    padding: 0 14px;
+    font-size: 14px;
+    line-height: 40px;
+    border-radius: 8px;
+  }
+  .sl-select.sl-lg {
+    padding-right: 36px;
+    background-position: right 14px center;
+    background-size: 12px 12px;
+  }
+
   /* Native select chevron */
   .sl-select {
     appearance: none;

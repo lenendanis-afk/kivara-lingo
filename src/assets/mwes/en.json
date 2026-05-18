@@ -1,0 +1,1952 @@
+{
+  "give up": {
+    "token": "give up",
+    "type": "phrase",
+    "phraseKind": "phrasal",
+    "level": "A2",
+    "translation": "rendirse",
+    "bilingual": "(phrasal) rendirse",
+    "monolingual": "To stop trying or surrender.",
+    "phonetic": "/ɡɪv ʌp/",
+    "examples": [
+      "I'm not going to give up that easily."
+    ]
+  },
+  "look for": {
+    "token": "look for",
+    "type": "phrase",
+    "phraseKind": "phrasal",
+    "level": "A2",
+    "translation": "buscar",
+    "bilingual": "(phrasal) buscar",
+    "monolingual": "To try to find something or someone.",
+    "phonetic": "/lʊk fɔːr/",
+    "examples": [
+      "What are you looking for?"
+    ]
+  },
+  "come on": {
+    "token": "come on",
+    "type": "phrase",
+    "phraseKind": "phrasal",
+    "level": "A1",
+    "translation": "vamos, dale",
+    "bilingual": "(phrasal) vamos, dale",
+    "monolingual": "Used to encourage or urge someone; also to express disbelief.",
+    "phonetic": "/kʌm ɒn/",
+    "examples": [
+      "Come on, we're going to be late!"
+    ]
+  },
+  "turn out": {
+    "token": "turn out",
+    "type": "phrase",
+    "phraseKind": "phrasal",
+    "level": "B1",
+    "translation": "resultar",
+    "bilingual": "(phrasal) resultar",
+    "monolingual": "To happen in a particular way; to prove to be.",
+    "phonetic": "/tɜːrn aʊt/",
+    "examples": [
+      "It turned out he was right all along."
+    ]
+  },
+  "figure out": {
+    "token": "figure out",
+    "type": "phrase",
+    "phraseKind": "phrasal",
+    "level": "B1",
+    "translation": "descifrar, resolver",
+    "bilingual": "(phrasal) descifrar, resolver",
+    "monolingual": "To understand or solve something after thinking about it.",
+    "phonetic": "/ˈfɪɡ.ər aʊt/",
+    "examples": [
+      "I can't figure out how to open this."
+    ]
+  },
+  "pick up": {
+    "token": "pick up",
+    "type": "phrase",
+    "phraseKind": "phrasal",
+    "level": "A2",
+    "translation": "recoger, levantar",
+    "bilingual": "(phrasal) recoger, levantar",
+    "monolingual": "To lift; to collect someone; to learn casually.",
+    "phonetic": "/pɪk ʌp/",
+    "examples": [
+      "Can you pick me up at the airport?"
+    ]
+  },
+  "get out": {
+    "token": "get out",
+    "type": "phrase",
+    "phraseKind": "phrasal",
+    "level": "A1",
+    "translation": "salir, largarse",
+    "bilingual": "(phrasal) salir, largarse",
+    "monolingual": "To leave a place; to escape.",
+    "phonetic": "/ɡɛt aʊt/",
+    "examples": [
+      "Get out of here before they see you!"
+    ]
+  },
+  "go on": {
+    "token": "go on",
+    "type": "phrase",
+    "phraseKind": "phrasal",
+    "level": "A2",
+    "translation": "continuar, seguir",
+    "bilingual": "(phrasal) continuar, seguir",
+    "monolingual": "To continue; to happen.",
+    "phonetic": "/ɡoʊ ɒn/",
+    "examples": [
+      "What's going on here?"
+    ]
+  },
+  "come back": {
+    "token": "come back",
+    "type": "phrase",
+    "phraseKind": "phrasal",
+    "level": "A2",
+    "translation": "volver, regresar",
+    "bilingual": "(phrasal) volver, regresar",
+    "monolingual": "To return to a place.",
+    "phonetic": "/kʌm bæk/",
+    "examples": [
+      "When are you coming back?"
+    ]
+  },
+  "show up": {
+    "token": "show up",
+    "type": "phrase",
+    "phraseKind": "phrasal",
+    "level": "B1",
+    "translation": "aparecer, presentarse",
+    "bilingual": "(phrasal) aparecer, presentarse",
+    "monolingual": "To arrive or appear, often unexpectedly.",
+    "phonetic": "/ʃoʊ ʌp/",
+    "examples": [
+      "He didn't show up to the meeting."
+    ]
+  },
+  "find out": {
+    "token": "find out",
+    "type": "phrase",
+    "phraseKind": "phrasal",
+    "level": "A2",
+    "translation": "descubrir, enterarse",
+    "bilingual": "(phrasal) descubrir, enterarse",
+    "monolingual": "To discover or learn something.",
+    "phonetic": "/faɪnd aʊt/",
+    "examples": [
+      "She'll find out the truth eventually."
+    ]
+  },
+  "hang out": {
+    "token": "hang out",
+    "type": "phrase",
+    "phraseKind": "phrasal",
+    "level": "B1",
+    "translation": "pasar el rato",
+    "bilingual": "(phrasal) pasar el rato",
+    "monolingual": "To spend time relaxing or socializing.",
+    "phonetic": "/hæŋ aʊt/",
+    "examples": [
+      "We used to hang out every weekend."
+    ]
+  },
+  "work out": {
+    "token": "work out",
+    "type": "phrase",
+    "phraseKind": "phrasal",
+    "level": "B1",
+    "translation": "funcionar, hacer ejercicio",
+    "bilingual": "(phrasal) funcionar, hacer ejercicio",
+    "monolingual": "To exercise; to succeed or be resolved.",
+    "phonetic": "/wɜːrk aʊt/",
+    "examples": [
+      "Everything will work out in the end."
+    ]
+  },
+  "set up": {
+    "token": "set up",
+    "type": "phrase",
+    "phraseKind": "phrasal",
+    "level": "B1",
+    "translation": "preparar, instalar",
+    "bilingual": "(phrasal) preparar, instalar",
+    "monolingual": "To arrange or organize; to establish.",
+    "phonetic": "/sɛt ʌp/",
+    "examples": [
+      "Who set up this whole thing?"
+    ]
+  },
+  "end up": {
+    "token": "end up",
+    "type": "phrase",
+    "phraseKind": "phrasal",
+    "level": "B1",
+    "translation": "terminar, acabar",
+    "bilingual": "(phrasal) terminar, acabar",
+    "monolingual": "To finally be in a situation, often unplanned.",
+    "phonetic": "/ɛnd ʌp/",
+    "examples": [
+      "We ended up staying until midnight."
+    ]
+  },
+  "get back": {
+    "token": "get back",
+    "type": "phrase",
+    "phraseKind": "phrasal",
+    "level": "A2",
+    "translation": "volver, recuperar",
+    "bilingual": "(phrasal) volver, recuperar",
+    "monolingual": "To return; to recover something.",
+    "phonetic": "/ɡɛt bæk/",
+    "examples": [
+      "I need to get back home before dark."
+    ]
+  },
+  "hold on": {
+    "token": "hold on",
+    "type": "phrase",
+    "phraseKind": "phrasal",
+    "level": "A2",
+    "translation": "espera, aguanta",
+    "bilingual": "(phrasal) espera, aguanta",
+    "monolingual": "To wait; to grip tightly.",
+    "phonetic": "/hoʊld ɒn/",
+    "examples": [
+      "Hold on, let me check."
+    ]
+  },
+  "shut up": {
+    "token": "shut up",
+    "type": "phrase",
+    "phraseKind": "phrasal",
+    "level": "A2",
+    "translation": "callarse",
+    "bilingual": "(phrasal) callarse",
+    "monolingual": "To stop talking (informal/rude).",
+    "phonetic": "/ʃʌt ʌp/",
+    "examples": [
+      "Would you just shut up for a second?"
+    ]
+  },
+  "wake up": {
+    "token": "wake up",
+    "type": "phrase",
+    "phraseKind": "phrasal",
+    "level": "A1",
+    "translation": "despertarse",
+    "bilingual": "(phrasal) despertarse",
+    "monolingual": "To stop sleeping; to become alert.",
+    "phonetic": "/weɪk ʌp/",
+    "examples": [
+      "Wake up! You're going to miss the bus."
+    ]
+  },
+  "move on": {
+    "token": "move on",
+    "type": "phrase",
+    "phraseKind": "phrasal",
+    "level": "B1",
+    "translation": "seguir adelante",
+    "bilingual": "(phrasal) seguir adelante",
+    "monolingual": "To progress; to stop dwelling on something.",
+    "phonetic": "/muːv ɒn/",
+    "examples": [
+      "It's time to move on with your life."
+    ]
+  },
+  "take off": {
+    "token": "take off",
+    "type": "phrase",
+    "phraseKind": "phrasal",
+    "level": "A2",
+    "translation": "despegar, quitarse",
+    "bilingual": "(phrasal) despegar, quitarse",
+    "monolingual": "To remove (clothing); to depart (plane); to leave quickly.",
+    "phonetic": "/teɪk ɒf/",
+    "examples": [
+      "I need to take off, see you later."
+    ]
+  },
+  "bring up": {
+    "token": "bring up",
+    "type": "phrase",
+    "phraseKind": "phrasal",
+    "level": "B1",
+    "translation": "mencionar, sacar el tema",
+    "bilingual": "(phrasal) mencionar, sacar el tema",
+    "monolingual": "To mention a topic; to raise a child.",
+    "phonetic": "/brɪŋ ʌp/",
+    "examples": [
+      "Don't bring that up again, please."
+    ]
+  },
+  "break up": {
+    "token": "break up",
+    "type": "phrase",
+    "phraseKind": "phrasal",
+    "level": "B1",
+    "translation": "romper, terminar",
+    "bilingual": "(phrasal) romper, terminar",
+    "monolingual": "To end a romantic relationship.",
+    "phonetic": "/breɪk ʌp/",
+    "examples": [
+      "They broke up last month."
+    ]
+  },
+  "make up": {
+    "token": "make up",
+    "type": "phrase",
+    "phraseKind": "phrasal",
+    "level": "B1",
+    "translation": "inventar, reconciliarse",
+    "bilingual": "(phrasal) inventar, reconciliarse",
+    "monolingual": "To invent a story; to reconcile after an argument.",
+    "phonetic": "/meɪk ʌp/",
+    "examples": [
+      "Did you guys make up after the fight?"
+    ]
+  },
+  "throw up": {
+    "token": "throw up",
+    "type": "phrase",
+    "phraseKind": "phrasal",
+    "level": "B1",
+    "translation": "vomitar",
+    "bilingual": "(phrasal) vomitar",
+    "monolingual": "To vomit.",
+    "phonetic": "/θroʊ ʌp/",
+    "examples": [
+      "I feel like I'm going to throw up."
+    ]
+  },
+  "pass out": {
+    "token": "pass out",
+    "type": "phrase",
+    "phraseKind": "phrasal",
+    "level": "B1",
+    "translation": "desmayarse",
+    "bilingual": "(phrasal) desmayarse",
+    "monolingual": "To lose consciousness; to faint.",
+    "phonetic": "/pæs aʊt/",
+    "examples": [
+      "She passed out from the heat."
+    ]
+  },
+  "point out": {
+    "token": "point out",
+    "type": "phrase",
+    "phraseKind": "phrasal",
+    "level": "B1",
+    "translation": "señalar",
+    "bilingual": "(phrasal) señalar",
+    "monolingual": "To draw attention to something.",
+    "phonetic": "/pɔɪnt aʊt/",
+    "examples": [
+      "I just wanted to point out one thing."
+    ]
+  },
+  "freak out": {
+    "token": "freak out",
+    "type": "phrase",
+    "phraseKind": "phrasal",
+    "level": "B1",
+    "translation": "asustarse, enloquecer",
+    "bilingual": "(phrasal) asustarse, enloquecer",
+    "monolingual": "To become extremely upset or excited.",
+    "phonetic": "/friːk aʊt/",
+    "examples": [
+      "Don't freak out, but I lost the keys."
+    ]
+  },
+  "put on": {
+    "token": "put on",
+    "type": "phrase",
+    "phraseKind": "phrasal",
+    "level": "A2",
+    "translation": "ponerse",
+    "bilingual": "(phrasal) ponerse",
+    "monolingual": "To dress in; to place on a surface.",
+    "phonetic": "/pʊt ɒn/",
+    "examples": [
+      "Put on a jacket, it's cold outside."
+    ]
+  },
+  "get off": {
+    "token": "get off",
+    "type": "phrase",
+    "phraseKind": "phrasal",
+    "level": "A2",
+    "translation": "bajarse, salir",
+    "bilingual": "(phrasal) bajarse, salir",
+    "monolingual": "To leave a vehicle; to stop touching.",
+    "phonetic": "/ɡɛt ɒf/",
+    "examples": [
+      "Get off at the next stop."
+    ]
+  },
+  "run out": {
+    "token": "run out",
+    "type": "phrase",
+    "phraseKind": "phrasal",
+    "level": "B1",
+    "translation": "quedarse sin",
+    "bilingual": "(phrasal) quedarse sin",
+    "monolingual": "To exhaust a supply; to have none left.",
+    "phonetic": "/rʌn aʊt/",
+    "examples": [
+      "We're running out of time."
+    ]
+  },
+  "go back": {
+    "token": "go back",
+    "type": "phrase",
+    "phraseKind": "phrasal",
+    "level": "A2",
+    "translation": "volver, regresar",
+    "bilingual": "(phrasal) volver, regresar",
+    "monolingual": "To return to a previous place or state.",
+    "phonetic": "/ɡoʊ bæk/",
+    "examples": [
+      "I don't want to go back there."
+    ]
+  },
+  "keep up": {
+    "token": "keep up",
+    "type": "phrase",
+    "phraseKind": "phrasal",
+    "level": "B1",
+    "translation": "mantener el ritmo",
+    "bilingual": "(phrasal) mantener el ritmo",
+    "monolingual": "To maintain pace; to continue.",
+    "phonetic": "/kiːp ʌp/",
+    "examples": [
+      "Keep up the good work!"
+    ]
+  },
+  "blow up": {
+    "token": "blow up",
+    "type": "phrase",
+    "phraseKind": "phrasal",
+    "level": "B1",
+    "translation": "explotar",
+    "bilingual": "(phrasal) explotar",
+    "monolingual": "To explode; to become very angry.",
+    "phonetic": "/bloʊ ʌp/",
+    "examples": [
+      "The whole thing blew up in his face."
+    ]
+  },
+  "take out": {
+    "token": "take out",
+    "type": "phrase",
+    "phraseKind": "phrasal",
+    "level": "A2",
+    "translation": "sacar",
+    "bilingual": "(phrasal) sacar",
+    "monolingual": "To remove; to bring food from a restaurant.",
+    "phonetic": "/teɪk aʊt/",
+    "examples": [
+      "Let's take out some pizza tonight."
+    ]
+  },
+  "check out": {
+    "token": "check out",
+    "type": "phrase",
+    "phraseKind": "phrasal",
+    "level": "B1",
+    "translation": "echar un vistazo",
+    "bilingual": "(phrasal) echar un vistazo",
+    "monolingual": "To examine; to leave a hotel; to look at.",
+    "phonetic": "/tʃɛk aʊt/",
+    "examples": [
+      "Check out this view!"
+    ]
+  },
+  "grow up": {
+    "token": "grow up",
+    "type": "phrase",
+    "phraseKind": "phrasal",
+    "level": "A2",
+    "translation": "crecer, madurar",
+    "bilingual": "(phrasal) crecer, madurar",
+    "monolingual": "To mature; to become an adult.",
+    "phonetic": "/ɡroʊ ʌp/",
+    "examples": [
+      "When I grew up, everything changed."
+    ]
+  },
+  "calm down": {
+    "token": "calm down",
+    "type": "phrase",
+    "phraseKind": "phrasal",
+    "level": "A2",
+    "translation": "calmarse",
+    "bilingual": "(phrasal) calmarse",
+    "monolingual": "To become less agitated or emotional.",
+    "phonetic": "/kɑːm daʊn/",
+    "examples": [
+      "Calm down, it's going to be okay."
+    ]
+  },
+  "break down": {
+    "token": "break down",
+    "type": "phrase",
+    "phraseKind": "phrasal",
+    "level": "B1",
+    "translation": "averiarse, derrumbarse",
+    "bilingual": "(phrasal) averiarse, derrumbarse",
+    "monolingual": "To stop functioning; to cry uncontrollably.",
+    "phonetic": "/breɪk daʊn/",
+    "examples": [
+      "The car broke down on the highway."
+    ]
+  },
+  "stand up": {
+    "token": "stand up",
+    "type": "phrase",
+    "phraseKind": "phrasal",
+    "level": "A2",
+    "translation": "levantarse, pararse",
+    "bilingual": "(phrasal) levantarse, pararse",
+    "monolingual": "To rise to a standing position.",
+    "phonetic": "/stænd ʌp/",
+    "examples": [
+      "Stand up when the judge enters."
+    ]
+  },
+  "sit down": {
+    "token": "sit down",
+    "type": "phrase",
+    "phraseKind": "phrasal",
+    "level": "A1",
+    "translation": "sentarse",
+    "bilingual": "(phrasal) sentarse",
+    "monolingual": "To take a seat.",
+    "phonetic": "/sɪt daʊn/",
+    "examples": [
+      "Please, sit down and relax."
+    ]
+  },
+  "give in": {
+    "token": "give in",
+    "type": "phrase",
+    "phraseKind": "phrasal",
+    "level": "B1",
+    "translation": "rendirse, ceder",
+    "bilingual": "(phrasal) rendirse, ceder",
+    "monolingual": "To yield; to stop resisting.",
+    "phonetic": "/ɡɪv ɪn/",
+    "examples": [
+      "She finally gave in and said yes."
+    ]
+  },
+  "look out": {
+    "token": "look out",
+    "type": "phrase",
+    "phraseKind": "phrasal",
+    "level": "A2",
+    "translation": "cuidado, ten cuidado",
+    "bilingual": "(phrasal) cuidado, ten cuidado",
+    "monolingual": "To be careful; a warning of danger.",
+    "phonetic": "/lʊk aʊt/",
+    "examples": [
+      "Look out! There's a car coming!"
+    ]
+  },
+  "go ahead": {
+    "token": "go ahead",
+    "type": "phrase",
+    "phraseKind": "phrasal",
+    "level": "A2",
+    "translation": "adelante, continúa",
+    "bilingual": "(phrasal) adelante, continúa",
+    "monolingual": "To proceed; permission to do something.",
+    "phonetic": "/ɡoʊ əˈhɛd/",
+    "examples": [
+      "Go ahead, I'm listening."
+    ]
+  },
+  "back off": {
+    "token": "back off",
+    "type": "phrase",
+    "phraseKind": "phrasal",
+    "level": "B1",
+    "translation": "retroceder, alejarse",
+    "bilingual": "(phrasal) retroceder, alejarse",
+    "monolingual": "To retreat; to stop pressuring someone.",
+    "phonetic": "/bæk ɒf/",
+    "examples": [
+      "Back off, this is none of your business."
+    ]
+  },
+  "come in": {
+    "token": "come in",
+    "type": "phrase",
+    "phraseKind": "phrasal",
+    "level": "A1",
+    "translation": "entra, pasa",
+    "bilingual": "(phrasal) entra, pasa",
+    "monolingual": "To enter.",
+    "phonetic": "/kʌm ɪn/",
+    "examples": [
+      "Come in, the door's open."
+    ]
+  },
+  "sign up": {
+    "token": "sign up",
+    "type": "phrase",
+    "phraseKind": "phrasal",
+    "level": "B1",
+    "translation": "inscribirse, registrarse",
+    "bilingual": "(phrasal) inscribirse, registrarse",
+    "monolingual": "To register or enroll.",
+    "phonetic": "/saɪn ʌp/",
+    "examples": [
+      "You should sign up for that class."
+    ]
+  },
+  "drop off": {
+    "token": "drop off",
+    "type": "phrase",
+    "phraseKind": "phrasal",
+    "level": "B1",
+    "translation": "dejar, llevar",
+    "bilingual": "(phrasal) dejar, llevar",
+    "monolingual": "To leave someone/something at a place; to decrease.",
+    "phonetic": "/drɒp ɒf/",
+    "examples": [
+      "I'll drop you off at the station."
+    ]
+  },
+  "cut off": {
+    "token": "cut off",
+    "type": "phrase",
+    "phraseKind": "phrasal",
+    "level": "B1",
+    "translation": "cortar, interrumpir",
+    "bilingual": "(phrasal) cortar, interrumpir",
+    "monolingual": "To interrupt; to disconnect.",
+    "phonetic": "/kʌt ɒf/",
+    "examples": [
+      "She cut me off mid-sentence."
+    ]
+  },
+  "pull off": {
+    "token": "pull off",
+    "type": "phrase",
+    "phraseKind": "phrasal",
+    "level": "B2",
+    "translation": "lograr, conseguir",
+    "bilingual": "(phrasal) lograr, conseguir",
+    "monolingual": "To succeed in doing something difficult.",
+    "phonetic": "/pʊl ɒf/",
+    "examples": [
+      "I can't believe you pulled that off!"
+    ]
+  },
+  "let go": {
+    "token": "let go",
+    "type": "phrase",
+    "phraseKind": "phrasal",
+    "level": "A2",
+    "translation": "soltar, dejar ir",
+    "bilingual": "(phrasal) soltar, dejar ir",
+    "monolingual": "To release one's hold; to stop clinging.",
+    "phonetic": "/lɛt ɡoʊ/",
+    "examples": [
+      "You have to let go of the past."
+    ]
+  },
+  "put up": {
+    "token": "put up",
+    "type": "phrase",
+    "phraseKind": "phrasal",
+    "level": "B1",
+    "translation": "aguantar, tolerar",
+    "bilingual": "(phrasal) aguantar, tolerar",
+    "monolingual": "To tolerate; to provide accommodation.",
+    "phonetic": "/pʊt ʌp/",
+    "examples": [
+      "I don't know how you put up with him."
+    ]
+  },
+  "go away": {
+    "token": "go away",
+    "type": "phrase",
+    "phraseKind": "phrasal",
+    "level": "A2",
+    "translation": "irse, largarse",
+    "bilingual": "(phrasal) irse, largarse",
+    "monolingual": "To leave; to depart.",
+    "phonetic": "/ɡoʊ əˈweɪ/",
+    "examples": [
+      "Just go away and leave me alone."
+    ]
+  },
+  "look up": {
+    "token": "look up",
+    "type": "phrase",
+    "phraseKind": "phrasal",
+    "level": "B1",
+    "translation": "buscar (info)",
+    "bilingual": "(phrasal) buscar (info)",
+    "monolingual": "To search for information.",
+    "phonetic": "/lʊk ʌp/",
+    "examples": [
+      "Look it up online if you don't believe me."
+    ]
+  },
+  "turn around": {
+    "token": "turn around",
+    "type": "phrase",
+    "phraseKind": "phrasal",
+    "level": "A2",
+    "translation": "darse la vuelta",
+    "bilingual": "(phrasal) darse la vuelta",
+    "monolingual": "To rotate; to change direction.",
+    "phonetic": "/tɜːrn əˈraʊnd/",
+    "examples": [
+      "Turn around slowly and don't make any sudden moves."
+    ]
+  },
+  "get in": {
+    "token": "get in",
+    "type": "phrase",
+    "phraseKind": "phrasal",
+    "level": "A1",
+    "translation": "entrar, subirse",
+    "bilingual": "(phrasal) entrar, subirse",
+    "monolingual": "To enter a vehicle or place.",
+    "phonetic": "/ɡɛt ɪn/",
+    "examples": [
+      "Get in the car, we're leaving."
+    ]
+  },
+  "get away": {
+    "token": "get away",
+    "type": "phrase",
+    "phraseKind": "phrasal",
+    "level": "B1",
+    "translation": "escapar",
+    "bilingual": "(phrasal) escapar",
+    "monolingual": "To escape.",
+    "phonetic": "/ɡɛt əˈweɪ/",
+    "examples": [
+      "We need to get away from here."
+    ]
+  },
+  "bring back": {
+    "token": "bring back",
+    "type": "phrase",
+    "phraseKind": "phrasal",
+    "level": "A2",
+    "translation": "devolver, traer de vuelta",
+    "bilingual": "(phrasal) devolver, traer de vuelta",
+    "monolingual": "To return something; to evoke memories.",
+    "phonetic": "/brɪŋ bæk/",
+    "examples": [
+      "This song brings back memories."
+    ]
+  },
+  "lock up": {
+    "token": "lock up",
+    "type": "phrase",
+    "phraseKind": "phrasal",
+    "level": "B1",
+    "translation": "encerrar",
+    "bilingual": "(phrasal) encerrar",
+    "monolingual": "To imprison; to secure a building.",
+    "phonetic": "/lɒk ʌp/",
+    "examples": [
+      "Lock up when you leave, okay?"
+    ]
+  },
+  "knock out": {
+    "token": "knock out",
+    "type": "phrase",
+    "phraseKind": "phrasal",
+    "level": "B1",
+    "translation": "noquear",
+    "bilingual": "(phrasal) noquear",
+    "monolingual": "To render unconscious.",
+    "phonetic": "/nɒk aʊt/",
+    "examples": [
+      "One punch and he was knocked out cold."
+    ]
+  },
+  "screw up": {
+    "token": "screw up",
+    "type": "phrase",
+    "phraseKind": "phrasal",
+    "level": "B2",
+    "translation": "arruinar, cagarla",
+    "bilingual": "(phrasal) arruinar, cagarla",
+    "monolingual": "To make a serious mistake (informal).",
+    "phonetic": "/skruː ʌp/",
+    "examples": [
+      "I really screwed up this time."
+    ]
+  },
+  "mess up": {
+    "token": "mess up",
+    "type": "phrase",
+    "phraseKind": "phrasal",
+    "level": "B1",
+    "translation": "arruinar, estropear",
+    "bilingual": "(phrasal) arruinar, estropear",
+    "monolingual": "To make an error; to ruin.",
+    "phonetic": "/mɛs ʌp/",
+    "examples": [
+      "Don't mess this up for me."
+    ]
+  },
+  "take over": {
+    "token": "take over",
+    "type": "phrase",
+    "phraseKind": "phrasal",
+    "level": "B1",
+    "translation": "tomar el control",
+    "bilingual": "(phrasal) tomar el control",
+    "monolingual": "To assume control of something.",
+    "phonetic": "/teɪk ˈoʊvər/",
+    "examples": [
+      "Who's going to take over when the boss retires?"
+    ]
+  },
+  "hook up": {
+    "token": "hook up",
+    "type": "phrase",
+    "phraseKind": "phrasal",
+    "level": "B2",
+    "translation": "conectar, liarse",
+    "bilingual": "(phrasal) conectar, liarse",
+    "monolingual": "To connect; to have a casual romantic encounter (informal).",
+    "phonetic": "/hʊk ʌp/",
+    "examples": [
+      "Can you hook up the speakers for me?"
+    ]
+  },
+  "wrap up": {
+    "token": "wrap up",
+    "type": "phrase",
+    "phraseKind": "phrasal",
+    "level": "B1",
+    "translation": "terminar, cerrar",
+    "bilingual": "(phrasal) terminar, cerrar",
+    "monolingual": "To finish; to conclude.",
+    "phonetic": "/ræp ʌp/",
+    "examples": [
+      "Let's wrap this up, it's getting late."
+    ]
+  },
+  "fill in": {
+    "token": "fill in",
+    "type": "phrase",
+    "phraseKind": "phrasal",
+    "level": "B1",
+    "translation": "rellenar, poner al día",
+    "bilingual": "(phrasal) rellenar, poner al día",
+    "monolingual": "To complete a form; to inform someone.",
+    "phonetic": "/fɪl ɪn/",
+    "examples": [
+      "Fill me in on what happened."
+    ]
+  },
+  "cheer up": {
+    "token": "cheer up",
+    "type": "phrase",
+    "phraseKind": "phrasal",
+    "level": "B1",
+    "translation": "animarse",
+    "bilingual": "(phrasal) animarse",
+    "monolingual": "To become happier; to make someone happier.",
+    "phonetic": "/tʃɪər ʌp/",
+    "examples": [
+      "Cheer up, things will get better."
+    ]
+  },
+  "cool down": {
+    "token": "cool down",
+    "type": "phrase",
+    "phraseKind": "phrasal",
+    "level": "A2",
+    "translation": "enfriarse, calmarse",
+    "bilingual": "(phrasal) enfriarse, calmarse",
+    "monolingual": "To become less hot; to calm down.",
+    "phonetic": "/kuːl daʊn/",
+    "examples": [
+      "Let's cool down before we say something we regret."
+    ]
+  },
+  "head out": {
+    "token": "head out",
+    "type": "phrase",
+    "phraseKind": "phrasal",
+    "level": "B1",
+    "translation": "salir, irse",
+    "bilingual": "(phrasal) salir, irse",
+    "monolingual": "To leave; to depart.",
+    "phonetic": "/hɛd aʊt/",
+    "examples": [
+      "We should head out before traffic gets bad."
+    ]
+  },
+  "kick in": {
+    "token": "kick in",
+    "type": "phrase",
+    "phraseKind": "phrasal",
+    "level": "B2",
+    "translation": "empezar a hacer efecto",
+    "bilingual": "(phrasal) empezar a hacer efecto",
+    "monolingual": "To start taking effect.",
+    "phonetic": "/kɪk ɪn/",
+    "examples": [
+      "The painkillers should kick in any minute now."
+    ]
+  },
+  "let down": {
+    "token": "let down",
+    "type": "phrase",
+    "phraseKind": "phrasal",
+    "level": "B1",
+    "translation": "decepcionar",
+    "bilingual": "(phrasal) decepcionar",
+    "monolingual": "To disappoint someone.",
+    "phonetic": "/lɛt daʊn/",
+    "examples": [
+      "I trusted you and you let me down."
+    ]
+  },
+  "open up": {
+    "token": "open up",
+    "type": "phrase",
+    "phraseKind": "phrasal",
+    "level": "B1",
+    "translation": "abrirse",
+    "bilingual": "(phrasal) abrirse",
+    "monolingual": "To become more communicative; to unlock.",
+    "phonetic": "/ˈoʊpən ʌp/",
+    "examples": [
+      "He finally opened up about his feelings."
+    ]
+  },
+  "pull out": {
+    "token": "pull out",
+    "type": "phrase",
+    "phraseKind": "phrasal",
+    "level": "B1",
+    "translation": "sacar, retirarse",
+    "bilingual": "(phrasal) sacar, retirarse",
+    "monolingual": "To withdraw; to extract.",
+    "phonetic": "/pʊl aʊt/",
+    "examples": [
+      "The troops are going to pull out next month."
+    ]
+  },
+  "run into": {
+    "token": "run into",
+    "type": "phrase",
+    "phraseKind": "phrasal",
+    "level": "B1",
+    "translation": "encontrarse con",
+    "bilingual": "(phrasal) encontrarse con",
+    "monolingual": "To meet unexpectedly; to collide with.",
+    "phonetic": "/rʌn ˈɪntuː/",
+    "examples": [
+      "I ran into your mom at the grocery store."
+    ]
+  },
+  "sort out": {
+    "token": "sort out",
+    "type": "phrase",
+    "phraseKind": "phrasal",
+    "level": "B1",
+    "translation": "solucionar, arreglar",
+    "bilingual": "(phrasal) solucionar, arreglar",
+    "monolingual": "To resolve; to organize.",
+    "phonetic": "/sɔːrt aʊt/",
+    "examples": [
+      "We need to sort this out before Monday."
+    ]
+  },
+  "speak up": {
+    "token": "speak up",
+    "type": "phrase",
+    "phraseKind": "phrasal",
+    "level": "B1",
+    "translation": "hablar más fuerte",
+    "bilingual": "(phrasal) hablar más fuerte",
+    "monolingual": "To talk louder; to voice one's opinion.",
+    "phonetic": "/spiːk ʌp/",
+    "examples": [
+      "If you have something to say, speak up."
+    ]
+  },
+  "stand out": {
+    "token": "stand out",
+    "type": "phrase",
+    "phraseKind": "phrasal",
+    "level": "B1",
+    "translation": "destacar, sobresalir",
+    "bilingual": "(phrasal) destacar, sobresalir",
+    "monolingual": "To be noticeable; to be exceptional.",
+    "phonetic": "/stænd aʊt/",
+    "examples": [
+      "She really stands out in a crowd."
+    ]
+  },
+  "step up": {
+    "token": "step up",
+    "type": "phrase",
+    "phraseKind": "phrasal",
+    "level": "B1",
+    "translation": "dar un paso al frente",
+    "bilingual": "(phrasal) dar un paso al frente",
+    "monolingual": "To take action; to increase effort.",
+    "phonetic": "/stɛp ʌp/",
+    "examples": [
+      "Someone needs to step up and take charge."
+    ]
+  },
+  "stick around": {
+    "token": "stick around",
+    "type": "phrase",
+    "phraseKind": "phrasal",
+    "level": "B1",
+    "translation": "quedarse, no irse",
+    "bilingual": "(phrasal) quedarse, no irse",
+    "monolingual": "To stay; to remain in a place.",
+    "phonetic": "/stɪk əˈraʊnd/",
+    "examples": [
+      "Stick around, the show's about to start."
+    ]
+  },
+  "take in": {
+    "token": "take in",
+    "type": "phrase",
+    "phraseKind": "phrasal",
+    "level": "B1",
+    "translation": "asimilar, absorber",
+    "bilingual": "(phrasal) asimilar, absorber",
+    "monolingual": "To absorb information; to shelter someone.",
+    "phonetic": "/teɪk ɪn/",
+    "examples": [
+      "That's a lot to take in all at once."
+    ]
+  },
+  "turn down": {
+    "token": "turn down",
+    "type": "phrase",
+    "phraseKind": "phrasal",
+    "level": "B1",
+    "translation": "rechazar, bajar",
+    "bilingual": "(phrasal) rechazar, bajar",
+    "monolingual": "To reject; to lower the volume.",
+    "phonetic": "/tɜːrn daʊn/",
+    "examples": [
+      "I can't believe she turned him down."
+    ]
+  },
+  "walk away": {
+    "token": "walk away",
+    "type": "phrase",
+    "phraseKind": "phrasal",
+    "level": "A2",
+    "translation": "irse, alejarse",
+    "bilingual": "(phrasal) irse, alejarse",
+    "monolingual": "To leave a situation; to abandon.",
+    "phonetic": "/wɔːk əˈweɪ/",
+    "examples": [
+      "Sometimes the best thing to do is walk away."
+    ]
+  },
+  "as well": {
+    "token": "as well",
+    "type": "phrase",
+    "phraseKind": "idiom",
+    "level": "A2",
+    "translation": "también",
+    "bilingual": "(idiom) también",
+    "monolingual": "Also; in addition.",
+    "phonetic": "/æz wɛl/",
+    "examples": [
+      "I'll have one as well, please."
+    ]
+  },
+  "by the way": {
+    "token": "by the way",
+    "type": "phrase",
+    "phraseKind": "idiom",
+    "level": "A2",
+    "translation": "por cierto",
+    "bilingual": "(idiom) por cierto",
+    "monolingual": "Incidentally; used to introduce a new topic.",
+    "phonetic": "/baɪ ðə weɪ/",
+    "examples": [
+      "By the way, have you seen my keys?"
+    ]
+  },
+  "of course": {
+    "token": "of course",
+    "type": "phrase",
+    "phraseKind": "idiom",
+    "level": "A1",
+    "translation": "por supuesto",
+    "bilingual": "(idiom) por supuesto",
+    "monolingual": "Certainly; as expected.",
+    "phonetic": "/əv kɔːrs/",
+    "examples": [
+      "Of course I'll help you."
+    ]
+  },
+  "kind of": {
+    "token": "kind of",
+    "type": "phrase",
+    "phraseKind": "idiom",
+    "level": "A2",
+    "translation": "algo así, más o menos",
+    "bilingual": "(idiom) algo así, más o menos",
+    "monolingual": "Somewhat; to some extent.",
+    "phonetic": "/kaɪnd əv/",
+    "examples": [
+      "I'm kind of tired right now."
+    ]
+  },
+  "a lot": {
+    "token": "a lot",
+    "type": "phrase",
+    "phraseKind": "idiom",
+    "level": "A1",
+    "translation": "mucho, un montón",
+    "bilingual": "(idiom) mucho, un montón",
+    "monolingual": "A large amount or to a great degree.",
+    "phonetic": "/ə lɒt/",
+    "examples": [
+      "She talks a lot when she's nervous."
+    ]
+  },
+  "in fact": {
+    "token": "in fact",
+    "type": "phrase",
+    "phraseKind": "idiom",
+    "level": "B1",
+    "translation": "de hecho",
+    "bilingual": "(idiom) de hecho",
+    "monolingual": "Actually; in reality.",
+    "phonetic": "/ɪn fækt/",
+    "examples": [
+      "In fact, I was just about to call you."
+    ]
+  },
+  "at least": {
+    "token": "at least",
+    "type": "phrase",
+    "phraseKind": "idiom",
+    "level": "A2",
+    "translation": "al menos, por lo menos",
+    "bilingual": "(idiom) al menos, por lo menos",
+    "monolingual": "Not less than; at the minimum.",
+    "phonetic": "/æt liːst/",
+    "examples": [
+      "At least tell me why you're leaving."
+    ]
+  },
+  "for real": {
+    "token": "for real",
+    "type": "phrase",
+    "phraseKind": "idiom",
+    "level": "B1",
+    "translation": "en serio, de verdad",
+    "bilingual": "(idiom) en serio, de verdad",
+    "monolingual": "Seriously; genuinely (informal).",
+    "phonetic": "/fɔːr riːl/",
+    "examples": [
+      "Wait, are you for real right now?"
+    ]
+  },
+  "no way": {
+    "token": "no way",
+    "type": "phrase",
+    "phraseKind": "idiom",
+    "level": "A2",
+    "translation": "de ninguna manera",
+    "bilingual": "(idiom) de ninguna manera",
+    "monolingual": "Absolutely not; expression of disbelief.",
+    "phonetic": "/noʊ weɪ/",
+    "examples": [
+      "No way! I can't believe it!"
+    ]
+  },
+  "right now": {
+    "token": "right now",
+    "type": "phrase",
+    "phraseKind": "idiom",
+    "level": "A1",
+    "translation": "ahora mismo",
+    "bilingual": "(idiom) ahora mismo",
+    "monolingual": "At this very moment.",
+    "phonetic": "/raɪt naʊ/",
+    "examples": [
+      "I need you to listen to me right now."
+    ]
+  },
+  "so far": {
+    "token": "so far",
+    "type": "phrase",
+    "phraseKind": "idiom",
+    "level": "B1",
+    "translation": "hasta ahora",
+    "bilingual": "(idiom) hasta ahora",
+    "monolingual": "Until this point in time.",
+    "phonetic": "/soʊ fɑːr/",
+    "examples": [
+      "So far, everything is going according to plan."
+    ]
+  },
+  "at all": {
+    "token": "at all",
+    "type": "phrase",
+    "phraseKind": "idiom",
+    "level": "A2",
+    "translation": "en absoluto",
+    "bilingual": "(idiom) en absoluto",
+    "monolingual": "In any way; to any extent (used with negatives).",
+    "phonetic": "/æt ɔːl/",
+    "examples": [
+      "I don't mind at all."
+    ]
+  },
+  "you know": {
+    "token": "you know",
+    "type": "phrase",
+    "phraseKind": "idiom",
+    "level": "A1",
+    "translation": "ya sabes",
+    "bilingual": "(idiom) ya sabes",
+    "monolingual": "Filler phrase used in conversation.",
+    "phonetic": "/juː noʊ/",
+    "examples": [
+      "It's like, you know, complicated."
+    ]
+  },
+  "I mean": {
+    "token": "I mean",
+    "type": "phrase",
+    "phraseKind": "idiom",
+    "level": "A2",
+    "translation": "quiero decir, o sea",
+    "bilingual": "(idiom) quiero decir, o sea",
+    "monolingual": "Used to clarify or rephrase.",
+    "phonetic": "/aɪ miːn/",
+    "examples": [
+      "I mean, it's not like we had a choice."
+    ]
+  },
+  "a little": {
+    "token": "a little",
+    "type": "phrase",
+    "phraseKind": "idiom",
+    "level": "A1",
+    "translation": "un poco",
+    "bilingual": "(idiom) un poco",
+    "monolingual": "A small amount; slightly.",
+    "phonetic": "/ə ˈlɪtəl/",
+    "examples": [
+      "Could you turn it down a little?"
+    ]
+  },
+  "sort of": {
+    "token": "sort of",
+    "type": "phrase",
+    "phraseKind": "idiom",
+    "level": "B1",
+    "translation": "algo así",
+    "bilingual": "(idiom) algo así",
+    "monolingual": "To some degree; somewhat.",
+    "phonetic": "/sɔːrt əv/",
+    "examples": [
+      "I sort of expected this to happen."
+    ]
+  },
+  "on purpose": {
+    "token": "on purpose",
+    "type": "phrase",
+    "phraseKind": "idiom",
+    "level": "B1",
+    "translation": "a propósito",
+    "bilingual": "(idiom) a propósito",
+    "monolingual": "Intentionally; deliberately.",
+    "phonetic": "/ɒn ˈpɜːrpəs/",
+    "examples": [
+      "Did you do that on purpose?"
+    ]
+  },
+  "at first": {
+    "token": "at first",
+    "type": "phrase",
+    "phraseKind": "idiom",
+    "level": "A2",
+    "translation": "al principio",
+    "bilingual": "(idiom) al principio",
+    "monolingual": "In the beginning.",
+    "phonetic": "/æt fɜːrst/",
+    "examples": [
+      "At first I didn't understand, but then it clicked."
+    ]
+  },
+  "for good": {
+    "token": "for good",
+    "type": "phrase",
+    "phraseKind": "idiom",
+    "level": "B1",
+    "translation": "para siempre",
+    "bilingual": "(idiom) para siempre",
+    "monolingual": "Permanently; forever.",
+    "phonetic": "/fɔːr ɡʊd/",
+    "examples": [
+      "This time, I'm leaving for good."
+    ]
+  },
+  "in charge": {
+    "token": "in charge",
+    "type": "phrase",
+    "phraseKind": "idiom",
+    "level": "B1",
+    "translation": "a cargo",
+    "bilingual": "(idiom) a cargo",
+    "monolingual": "Having authority or responsibility.",
+    "phonetic": "/ɪn tʃɑːrdʒ/",
+    "examples": [
+      "Who's in charge around here?"
+    ]
+  },
+  "at once": {
+    "token": "at once",
+    "type": "phrase",
+    "phraseKind": "idiom",
+    "level": "B1",
+    "translation": "de inmediato",
+    "bilingual": "(idiom) de inmediato",
+    "monolingual": "Immediately; simultaneously.",
+    "phonetic": "/æt wʌns/",
+    "examples": [
+      "Come here at once!"
+    ]
+  },
+  "for sure": {
+    "token": "for sure",
+    "type": "phrase",
+    "phraseKind": "idiom",
+    "level": "A2",
+    "translation": "seguro, sin duda",
+    "bilingual": "(idiom) seguro, sin duda",
+    "monolingual": "Certainly; without doubt.",
+    "phonetic": "/fɔːr ʃʊr/",
+    "examples": [
+      "That's for sure the best one yet."
+    ]
+  },
+  "out loud": {
+    "token": "out loud",
+    "type": "phrase",
+    "phraseKind": "idiom",
+    "level": "B1",
+    "translation": "en voz alta",
+    "bilingual": "(idiom) en voz alta",
+    "monolingual": "Audibly; not silently.",
+    "phonetic": "/aʊt laʊd/",
+    "examples": [
+      "Did I just say that out loud?"
+    ]
+  },
+  "in common": {
+    "token": "in common",
+    "type": "phrase",
+    "phraseKind": "idiom",
+    "level": "B1",
+    "translation": "en común",
+    "bilingual": "(idiom) en común",
+    "monolingual": "Shared between two or more people.",
+    "phonetic": "/ɪn ˈkɒmən/",
+    "examples": [
+      "We have a lot more in common than you think."
+    ]
+  },
+  "by heart": {
+    "token": "by heart",
+    "type": "phrase",
+    "phraseKind": "idiom",
+    "level": "B1",
+    "translation": "de memoria",
+    "bilingual": "(idiom) de memoria",
+    "monolingual": "From memory; memorized.",
+    "phonetic": "/baɪ hɑːrt/",
+    "examples": [
+      "I know this speech by heart."
+    ]
+  },
+  "on fire": {
+    "token": "on fire",
+    "type": "phrase",
+    "phraseKind": "idiom",
+    "level": "B1",
+    "translation": "en llamas, ardiendo",
+    "bilingual": "(idiom) en llamas, ardiendo",
+    "monolingual": "Burning; performing exceptionally well (slang).",
+    "phonetic": "/ɒn ˈfaɪər/",
+    "examples": [
+      "That building is on fire!"
+    ]
+  },
+  "in trouble": {
+    "token": "in trouble",
+    "type": "phrase",
+    "phraseKind": "idiom",
+    "level": "A2",
+    "translation": "en problemas",
+    "bilingual": "(idiom) en problemas",
+    "monolingual": "In a difficult or dangerous situation.",
+    "phonetic": "/ɪn ˈtrʌbəl/",
+    "examples": [
+      "You're in big trouble, young man."
+    ]
+  },
+  "on time": {
+    "token": "on time",
+    "type": "phrase",
+    "phraseKind": "idiom",
+    "level": "A2",
+    "translation": "a tiempo, puntual",
+    "bilingual": "(idiom) a tiempo, puntual",
+    "monolingual": "Punctual; at the scheduled time.",
+    "phonetic": "/ɒn taɪm/",
+    "examples": [
+      "The train arrived on time for once."
+    ]
+  },
+  "for free": {
+    "token": "for free",
+    "type": "phrase",
+    "phraseKind": "idiom",
+    "level": "A2",
+    "translation": "gratis",
+    "bilingual": "(idiom) gratis",
+    "monolingual": "Without cost.",
+    "phonetic": "/fɔːr friː/",
+    "examples": [
+      "They gave it to us for free!"
+    ]
+  },
+  "at last": {
+    "token": "at last",
+    "type": "phrase",
+    "phraseKind": "idiom",
+    "level": "B1",
+    "translation": "por fin, al fin",
+    "bilingual": "(idiom) por fin, al fin",
+    "monolingual": "Finally; after a long wait.",
+    "phonetic": "/æt læst/",
+    "examples": [
+      "At last, we can go home."
+    ]
+  },
+  "in love": {
+    "token": "in love",
+    "type": "phrase",
+    "phraseKind": "idiom",
+    "level": "A2",
+    "translation": "enamorado",
+    "bilingual": "(idiom) enamorado",
+    "monolingual": "Experiencing romantic love.",
+    "phonetic": "/ɪn lʌv/",
+    "examples": [
+      "I think I'm in love with her."
+    ]
+  },
+  "a big deal": {
+    "token": "a big deal",
+    "type": "phrase",
+    "phraseKind": "idiom",
+    "level": "B1",
+    "translation": "algo importante",
+    "bilingual": "(idiom) algo importante",
+    "monolingual": "Something important or significant.",
+    "phonetic": "/ə bɪɡ diːl/",
+    "examples": [
+      "It's not a big deal, don't worry."
+    ]
+  },
+  "what the hell": {
+    "token": "what the hell",
+    "type": "phrase",
+    "phraseKind": "idiom",
+    "level": "B1",
+    "translation": "qué demonios",
+    "bilingual": "(idiom) qué demonios",
+    "monolingual": "Expression of surprise, anger or confusion.",
+    "phonetic": "/wɒt ðə hɛl/",
+    "examples": [
+      "What the hell are you doing here?"
+    ]
+  },
+  "no kidding": {
+    "token": "no kidding",
+    "type": "phrase",
+    "phraseKind": "idiom",
+    "level": "B1",
+    "translation": "no me digas, en serio",
+    "bilingual": "(idiom) no me digas, en serio",
+    "monolingual": "Really; I'm serious / expression of agreement.",
+    "phonetic": "/noʊ ˈkɪdɪŋ/",
+    "examples": [
+      "No kidding, that was the best meal I've ever had."
+    ]
+  },
+  "my bad": {
+    "token": "my bad",
+    "type": "phrase",
+    "phraseKind": "idiom",
+    "level": "B1",
+    "translation": "mi culpa, perdón",
+    "bilingual": "(idiom) mi culpa, perdón",
+    "monolingual": "My mistake; I'm sorry (informal).",
+    "phonetic": "/maɪ bæd/",
+    "examples": [
+      "Oh, my bad. I thought you said Tuesday."
+    ]
+  },
+  "fair enough": {
+    "token": "fair enough",
+    "type": "phrase",
+    "phraseKind": "idiom",
+    "level": "B1",
+    "translation": "bastante justo, vale",
+    "bilingual": "(idiom) bastante justo, vale",
+    "monolingual": "Acceptable; reasonable.",
+    "phonetic": "/fɛər ɪˈnʌf/",
+    "examples": [
+      "Fair enough, I see your point."
+    ]
+  },
+  "trust me": {
+    "token": "trust me",
+    "type": "phrase",
+    "phraseKind": "idiom",
+    "level": "A2",
+    "translation": "confía en mí",
+    "bilingual": "(idiom) confía en mí",
+    "monolingual": "Believe what I'm saying.",
+    "phonetic": "/trʌst miː/",
+    "examples": [
+      "Trust me, you don't want to go there."
+    ]
+  },
+  "never mind": {
+    "token": "never mind",
+    "type": "phrase",
+    "phraseKind": "idiom",
+    "level": "A2",
+    "translation": "no importa, olvídalo",
+    "bilingual": "(idiom) no importa, olvídalo",
+    "monolingual": "Forget about it; it doesn't matter.",
+    "phonetic": "/ˈnɛvər maɪnd/",
+    "examples": [
+      "Never mind, I'll do it myself."
+    ]
+  },
+  "so what": {
+    "token": "so what",
+    "type": "phrase",
+    "phraseKind": "idiom",
+    "level": "A2",
+    "translation": "y qué, qué más da",
+    "bilingual": "(idiom) y qué, qué más da",
+    "monolingual": "Why does it matter; expressing indifference.",
+    "phonetic": "/soʊ wɒt/",
+    "examples": [
+      "So what if I'm late? It doesn't matter."
+    ]
+  },
+  "take care": {
+    "token": "take care",
+    "type": "phrase",
+    "phraseKind": "idiom",
+    "level": "A2",
+    "translation": "cuídate",
+    "bilingual": "(idiom) cuídate",
+    "monolingual": "Be careful; a farewell expression.",
+    "phonetic": "/teɪk kɛər/",
+    "examples": [
+      "Take care of yourself out there."
+    ]
+  },
+  "good luck": {
+    "token": "good luck",
+    "type": "phrase",
+    "phraseKind": "idiom",
+    "level": "A1",
+    "translation": "buena suerte",
+    "bilingual": "(idiom) buena suerte",
+    "monolingual": "A wish for success.",
+    "phonetic": "/ɡʊd lʌk/",
+    "examples": [
+      "Good luck on your exam tomorrow."
+    ]
+  },
+  "watch out": {
+    "token": "watch out",
+    "type": "phrase",
+    "phraseKind": "idiom",
+    "level": "A2",
+    "translation": "cuidado, ojo",
+    "bilingual": "(idiom) cuidado, ojo",
+    "monolingual": "Be careful; a warning.",
+    "phonetic": "/wɒtʃ aʊt/",
+    "examples": [
+      "Watch out for that step!"
+    ]
+  },
+  "well done": {
+    "token": "well done",
+    "type": "phrase",
+    "phraseKind": "idiom",
+    "level": "A2",
+    "translation": "bien hecho",
+    "bilingual": "(idiom) bien hecho",
+    "monolingual": "Congratulations; good job.",
+    "phonetic": "/wɛl dʌn/",
+    "examples": [
+      "Well done, you passed with flying colors!"
+    ]
+  },
+  "heads up": {
+    "token": "heads up",
+    "type": "phrase",
+    "phraseKind": "idiom",
+    "level": "B1",
+    "translation": "aviso, ojo",
+    "bilingual": "(idiom) aviso, ojo",
+    "monolingual": "A warning or advance notice.",
+    "phonetic": "/hɛdz ʌp/",
+    "examples": [
+      "Just a heads up, the boss is in a bad mood."
+    ]
+  },
+  "way to go": {
+    "token": "way to go",
+    "type": "phrase",
+    "phraseKind": "idiom",
+    "level": "B1",
+    "translation": "bien hecho, así se hace",
+    "bilingual": "(idiom) bien hecho, así se hace",
+    "monolingual": "Expression of praise (can be sarcastic).",
+    "phonetic": "/weɪ tuː ɡoʊ/",
+    "examples": [
+      "Way to go, champ!"
+    ]
+  },
+  "no offense": {
+    "token": "no offense",
+    "type": "phrase",
+    "phraseKind": "idiom",
+    "level": "B1",
+    "translation": "sin ofender",
+    "bilingual": "(idiom) sin ofender",
+    "monolingual": "I don't mean to insult you.",
+    "phonetic": "/noʊ əˈfɛns/",
+    "examples": [
+      "No offense, but that's a terrible idea."
+    ]
+  },
+  "give me a break": {
+    "token": "give me a break",
+    "type": "phrase",
+    "phraseKind": "idiom",
+    "level": "B1",
+    "translation": "no me jodas, dame un respiro",
+    "bilingual": "(idiom) no me jodas, dame un respiro",
+    "monolingual": "Expression of frustration or disbelief.",
+    "phonetic": "/ɡɪv miː ə breɪk/",
+    "examples": [
+      "Give me a break, that's ridiculous."
+    ]
+  },
+  "here we go": {
+    "token": "here we go",
+    "type": "phrase",
+    "phraseKind": "idiom",
+    "level": "A2",
+    "translation": "ahí vamos, aquí vamos",
+    "bilingual": "(idiom) ahí vamos, aquí vamos",
+    "monolingual": "Indicates something is about to start.",
+    "phonetic": "/hɪər wiː ɡoʊ/",
+    "examples": [
+      "Alright, here we go again."
+    ]
+  },
+  "I got it": {
+    "token": "I got it",
+    "type": "phrase",
+    "phraseKind": "idiom",
+    "level": "A2",
+    "translation": "lo tengo, entendido",
+    "bilingual": "(idiom) lo tengo, entendido",
+    "monolingual": "I understand; I'll handle it.",
+    "phonetic": "/aɪ ɡɒt ɪt/",
+    "examples": [
+      "Don't worry, I got it from here."
+    ]
+  },
+  "my pleasure": {
+    "token": "my pleasure",
+    "type": "phrase",
+    "phraseKind": "idiom",
+    "level": "A2",
+    "translation": "un placer",
+    "bilingual": "(idiom) un placer",
+    "monolingual": "You're welcome; happy to help.",
+    "phonetic": "/maɪ ˈplɛʒər/",
+    "examples": [
+      "Thank you so much! — My pleasure."
+    ]
+  },
+  "not bad": {
+    "token": "not bad",
+    "type": "phrase",
+    "phraseKind": "idiom",
+    "level": "A2",
+    "translation": "nada mal",
+    "bilingual": "(idiom) nada mal",
+    "monolingual": "Fairly good; acceptable.",
+    "phonetic": "/nɒt bæd/",
+    "examples": [
+      "Not bad for a first attempt!"
+    ]
+  },
+  "all along": {
+    "token": "all along",
+    "type": "phrase",
+    "phraseKind": "idiom",
+    "level": "B1",
+    "translation": "todo el tiempo, desde el principio",
+    "bilingual": "(idiom) todo el tiempo, desde el principio",
+    "monolingual": "The entire time; from the beginning.",
+    "phonetic": "/ɔːl əˈlɒŋ/",
+    "examples": [
+      "She knew the truth all along."
+    ]
+  },
+  "after all": {
+    "token": "after all",
+    "type": "phrase",
+    "phraseKind": "idiom",
+    "level": "B1",
+    "translation": "después de todo",
+    "bilingual": "(idiom) después de todo",
+    "monolingual": "Despite what was said or expected.",
+    "phonetic": "/ˈæftər ɔːl/",
+    "examples": [
+      "Maybe it wasn't such a bad idea after all."
+    ]
+  },
+  "once again": {
+    "token": "once again",
+    "type": "phrase",
+    "phraseKind": "idiom",
+    "level": "B1",
+    "translation": "una vez más",
+    "bilingual": "(idiom) una vez más",
+    "monolingual": "One more time; again.",
+    "phonetic": "/wʌns əˈɡɛn/",
+    "examples": [
+      "Once again, I find myself apologizing."
+    ]
+  },
+  "ever since": {
+    "token": "ever since",
+    "type": "phrase",
+    "phraseKind": "idiom",
+    "level": "B1",
+    "translation": "desde entonces",
+    "bilingual": "(idiom) desde entonces",
+    "monolingual": "Continuously from that time.",
+    "phonetic": "/ˈɛvər sɪns/",
+    "examples": [
+      "Ever since that day, nothing was the same."
+    ]
+  },
+  "in the end": {
+    "token": "in the end",
+    "type": "phrase",
+    "phraseKind": "idiom",
+    "level": "B1",
+    "translation": "al final",
+    "bilingual": "(idiom) al final",
+    "monolingual": "Finally; ultimately.",
+    "phonetic": "/ɪn ðə ɛnd/",
+    "examples": [
+      "In the end, it all worked out."
+    ]
+  },
+  "all over": {
+    "token": "all over",
+    "type": "phrase",
+    "phraseKind": "idiom",
+    "level": "B1",
+    "translation": "por todos lados, terminado",
+    "bilingual": "(idiom) por todos lados, terminado",
+    "monolingual": "Everywhere; finished.",
+    "phonetic": "/ɔːl ˈoʊvər/",
+    "examples": [
+      "It's all over now, you can relax."
+    ]
+  },
+  "right away": {
+    "token": "right away",
+    "type": "phrase",
+    "phraseKind": "idiom",
+    "level": "A2",
+    "translation": "de inmediato, ya mismo",
+    "bilingual": "(idiom) de inmediato, ya mismo",
+    "monolingual": "Immediately; at once.",
+    "phonetic": "/raɪt əˈweɪ/",
+    "examples": [
+      "I'll be there right away."
+    ]
+  },
+  "by now": {
+    "token": "by now",
+    "type": "phrase",
+    "phraseKind": "idiom",
+    "level": "B1",
+    "translation": "a estas alturas",
+    "bilingual": "(idiom) a estas alturas",
+    "monolingual": "At this point in time.",
+    "phonetic": "/baɪ naʊ/",
+    "examples": [
+      "She should be home by now."
+    ]
+  },
+  "as usual": {
+    "token": "as usual",
+    "type": "phrase",
+    "phraseKind": "idiom",
+    "level": "B1",
+    "translation": "como siempre",
+    "bilingual": "(idiom) como siempre",
+    "monolingual": "In the normal or expected way.",
+    "phonetic": "/æz ˈjuːʒuəl/",
+    "examples": [
+      "He was late, as usual."
+    ]
+  },
+  "on top of that": {
+    "token": "on top of that",
+    "type": "phrase",
+    "phraseKind": "idiom",
+    "level": "B2",
+    "translation": "además de eso",
+    "bilingual": "(idiom) además de eso",
+    "monolingual": "In addition to that; furthermore.",
+    "phonetic": "/ɒn tɒp əv ðæt/",
+    "examples": [
+      "The car broke down, and on top of that, it started raining."
+    ]
+  },
+  "at the end of the day": {
+    "token": "at the end of the day",
+    "type": "phrase",
+    "phraseKind": "idiom",
+    "level": "B2",
+    "translation": "al fin y al cabo",
+    "bilingual": "(idiom) al fin y al cabo",
+    "monolingual": "Ultimately; when everything is considered.",
+    "phonetic": "/æt ðə ɛnd əv ðə deɪ/",
+    "examples": [
+      "At the end of the day, family is what matters."
+    ]
+  },
+  "to be honest": {
+    "token": "to be honest",
+    "type": "phrase",
+    "phraseKind": "idiom",
+    "level": "B1",
+    "translation": "para ser honesto",
+    "bilingual": "(idiom) para ser honesto",
+    "monolingual": "Speaking frankly.",
+    "phonetic": "/tuː biː ˈɒnɪst/",
+    "examples": [
+      "To be honest, I don't really care."
+    ]
+  },
+  "the thing is": {
+    "token": "the thing is",
+    "type": "phrase",
+    "phraseKind": "idiom",
+    "level": "B1",
+    "translation": "el asunto es, la cosa es",
+    "bilingual": "(idiom) el asunto es, la cosa es",
+    "monolingual": "Used to explain or introduce a problem.",
+    "phonetic": "/ðə θɪŋ ɪz/",
+    "examples": [
+      "The thing is, I already made plans."
+    ]
+  },
+  "what matters is": {
+    "token": "what matters is",
+    "type": "phrase",
+    "phraseKind": "idiom",
+    "level": "B1",
+    "translation": "lo que importa es",
+    "bilingual": "(idiom) lo que importa es",
+    "monolingual": "The important thing is.",
+    "phonetic": "/wɒt ˈmætərz ɪz/",
+    "examples": [
+      "What matters is that you're safe."
+    ]
+  },
+  "long story short": {
+    "token": "long story short",
+    "type": "phrase",
+    "phraseKind": "idiom",
+    "level": "B2",
+    "translation": "en resumen",
+    "bilingual": "(idiom) en resumen",
+    "monolingual": "To summarize briefly.",
+    "phonetic": "/lɒŋ ˈstɔːri ʃɔːrt/",
+    "examples": [
+      "Long story short, we missed the flight."
+    ]
+  },
+  "for what it is worth": {
+    "token": "for what it is worth",
+    "type": "phrase",
+    "phraseKind": "idiom",
+    "level": "B2",
+    "translation": "por lo que vale",
+    "bilingual": "(idiom) por lo que vale",
+    "monolingual": "My opinion may not be valuable, but...",
+    "phonetic": "/fɔːr wɒt ɪt ɪz wɜːrθ/",
+    "examples": [
+      "For what it's worth, I think you made the right call."
+    ]
+  },
+  "later on": {
+    "token": "later on",
+    "type": "phrase",
+    "phraseKind": "idiom",
+    "level": "A2",
+    "translation": "más tarde, después",
+    "bilingual": "(adv.) más tarde, después",
+    "monolingual": "At some time in the future; afterwards.",
+    "phonetic": "/ˈleɪtər ɒn/",
+    "examples": [
+      "Later on, we can discuss the details."
+    ]
+  }
+}

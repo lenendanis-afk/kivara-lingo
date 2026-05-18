@@ -19,18 +19,17 @@ interface PlatformRules {
   hideShadows: string[];
 }
 
-const COMMON_HIDE_UI = [
-  '[data-testid*="player-controls" i]',
-  '[data-testid*="player-overlay" i]',
-];
+// Common selectors to add ON TOP of the per-platform list when the user
+// enables the toggle. Kept conservative because broad attribute selectors
+// like `[class*="Gradient" i]` can match unintended elements on
+// platforms (e.g. YouTube has gradient styles on thumbnails sidebar).
+//
+// Empty by default — every platform should opt-in to its own selectors
+// rather than relying on these broad matches that have caused YouTube
+// videos to render as black rectangles in the past.
+const COMMON_HIDE_UI: string[] = [];
 
-const COMMON_HIDE_SHADOWS = [
-  '[class*="Gradient" i]',
-  '[class*="gradient-overlay" i]',
-  '[class*="ScrimOverlay" i]',
-  '[class*="scrim" i]',
-  '[class*="vignette" i]',
-];
+const COMMON_HIDE_SHADOWS: string[] = [];
 
 const RULES: Record<Platform, PlatformRules> = {
   youtube: {
@@ -78,12 +77,14 @@ const RULES: Record<Platform, PlatformRules> = {
     ],
   },
   hbo: {
-    // Max's player is a styled-components tree under `Fuse-Web-Play`. Inspecting
-    // a live session yields containers like `ControlsContainer-Fuse-Web-Play`,
-    // `ControlsHeader-...`, `ControlsCenter-...`, `ControlsFooter-...`, plus the
-    // `AutohiderContainer` that wraps the chrome and fades in/out on pointer
-    // move. Anchoring on the stable `Controls*` / `Autohider` substrings is
-    // resilient across releases.
+    // Max's player is a styled-components tree under `Fuse-Web-Play`. We
+    // only target VISUAL chrome — control bars, headers, footers and the
+    // autohider — never the root containers (`LayerContainer`,
+    // `OverlayRootContainer`, `OverlayContainer-Fuse-Web-Play`). Hiding
+    // those breaks the keyboard listeners HBO Max attaches at the player
+    // root, which is why Space stopped pausing the video as soon as the
+    // user toggled "Ocultar UI". Anchor strings here are stable across
+    // releases.
     hideUI: [
       // Generic testid-style fallbacks (older Max builds expose these).
       '[data-testid="player-overlay"]',
@@ -97,10 +98,11 @@ const RULES: Record<Platform, PlatformRules> = {
       '[class*="ControlsFooter"]',
       '[class*="ControlsFooterTop"]',
       '[class*="ControlsFooterBottom"]',
+      // AutohiderContainer is the visual fade wrapper for the chrome —
+      // hiding it is fine because the underlying root containers
+      // (LayerContainer, OverlayRootContainer) keep the keyboard
+      // listeners alive.
       '[class*="AutohiderContainer"]',
-      '[class*="OverlayContainer-Fuse-Web-Play"]',
-      '[class*="OverlayRootContainer"]',
-      '[class*="LayerContainer"]',
       '[class*="PlayerDrawer"]',
       '[class*="PlayerButton"]',
       '[class*="ScrubberContainer"]',
@@ -123,18 +125,14 @@ const RULES: Record<Platform, PlatformRules> = {
       '[class*="TopBar"][class*="player" i]',
     ],
     hideShadows: [
+      // Targeted: only the named gradient containers. Broad `[class*="gradient"]`
+      // matches accidentally on stable styled-components hashes — caused
+      // black-screen reports on YouTube and unwanted hits on Max overlays.
       '[class*="TopGradient"]',
       '[class*="BottomGradient"]',
       '[class*="ControlsCenterGradient"]',
-      '[class*="Gradient"]',
-      '[class*="gradient"]',
-      '[class*="Scrim"]',
-      '[class*="scrim"]',
-      '[class*="Vignette"]',
-      '[class*="vignette"]',
       '[class*="HoverOverlay"]',
       '[class*="hover-overlay"]',
-      '[class*="ProtectionLayerContainer"]',
     ],
   },
   prime: {
@@ -172,17 +170,19 @@ export function buildCleanupCss({ hideUI, hideShadows, platform }: BuildOpts): s
   }
   if (selectors.length === 0) return '';
 
-  // Combine `display: none` with the visibility/opacity overrides so we cover
-  // both static chrome (which would otherwise still take layout space) and
-  // styled-components animated overlays that re-assert `opacity: 1` via
-  // `style=""` on every pointermove. `!important` beats inline styles at the
-  // same specificity tier.
+  // We use `visibility: hidden` + `opacity: 0` instead of `display: none`
+  // on purpose: hiding the chrome should never tear down its DOM subtree,
+  // because some players (notably HBO Max) attach keyboard listeners on
+  // the controls or their parents. With `display: none` the listeners
+  // never fire — Space stops pausing, F stops fullscreening, etc. With
+  // `visibility: hidden` the elements still exist, still receive events
+  // they were going to receive (we kill `pointer-events` separately so
+  // the user can't click invisible chrome by accident), but they're
+  // invisible and don't block the cursor.
   return `${Array.from(new Set(selectors)).join(',\n')} {
-    display: none !important;
     visibility: hidden !important;
     opacity: 0 !important;
     pointer-events: none !important;
-    background: transparent !important;
   }`;
 }
 

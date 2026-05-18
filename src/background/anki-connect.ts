@@ -216,6 +216,24 @@ export const ankiConnect = {
   async createDeck(deck: string, url?: string, apiKey?: string): Promise<number> {
     return invoke<number>('createDeck', { deck }, { url, apiKey });
   },
+
+  /**
+   * Find note IDs matching a query. Used to check which words the user
+   * already has in their deck so the overlay can mark them as "saved" from
+   * the start (green highlight + check icon) without the user needing to
+   * hover each one.
+   */
+  async findNotes(query: string, url?: string, apiKey?: string): Promise<number[]> {
+    return invoke<number[]>('findNotes', { query }, { url, apiKey });
+  },
+
+  /**
+   * Get the content of specific fields from notes by ID. Used alongside
+   * findNotes to extract the actual saved word values.
+   */
+  async notesInfo(notes: number[], url?: string, apiKey?: string): Promise<Array<{ noteId: number; fields: Record<string, { value: string }> }>> {
+    return invoke<Array<{ noteId: number; fields: Record<string, { value: string }> }>>('notesInfo', { notes }, { url, apiKey });
+  },
 };
 
 /** Strip the `data:...;base64,` prefix from a data URL. */

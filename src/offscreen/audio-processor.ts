@@ -32,8 +32,10 @@
 
 import {
   convertBlobToWav,
+  convertBlobToMp3,
   blobToDataUrl,
   encodeWavMono,
+  encodeMp3Mono,
   trimPcm,
 } from './audio-encoder';
 import { tightenToSpeech, type VadOptions } from './vad';
@@ -42,9 +44,26 @@ import {
   setWhisperConfig,
   transcribePcm,
   unloadWhisper,
+  onModelProgress,
   type WhisperConfig,
   type WhisperResult,
 } from './whisper-asr';
+
+// Bridge Whisper model-download progress events from the offscreen document
+// to the rest of the extension (popup, side panel, options page). Anyone
+// can subscribe with `chrome.runtime.onMessage` and filter by
+// `type === 'OFFSCREEN_WHISPER_MODEL_PROGRESS'`. Cheap fire-and-forget;
+// errors are swallowed because the receivers are optional.
+onModelProgress((info) => {
+  try {
+    chrome.runtime.sendMessage({
+      type: 'OFFSCREEN_WHISPER_MODEL_PROGRESS',
+      ...info,
+    });
+  } catch {
+    /* no listeners, no problem */
+  }
+});
 
 interface OffscreenMessage {
   type: string;
@@ -59,10 +78,12 @@ interface OffscreenMessage {
   rate?: number;
   pitch?: number;
   /** Whisper / VAD fields */
-  format?: 'wav' | 'webm';
+  format?: 'mp3' | 'wav' | 'webm';
   useVad?: boolean;
   preRollMs?: number;
   postRollMs?: number;
+  /** MP3 bitrate (kbps) for Anki output. Defaults to 64 in `extractClip`. */
+  mp3BitrateKbps?: number;
   language?: string;
   whisperConfig?: Partial<WhisperConfig>;
 }
@@ -227,10 +248,21 @@ function buildWebmBlob(sliceStart: number, sliceEnd: number): Blob | null {
 interface ExtractOptions {
   startMs: number;
   endMs: number;
-  format?: 'wav' | 'webm';
+  /**
+   * Output container.
+   *  - `'mp3'` (default for Anki): smallest, ~10× smaller than WAV.
+   *    Browsers and Anki play MP3 natively. Encoded via `lamejs`.
+   *  - `'wav'`: 16 kHz mono PCM. Used internally by Whisper. Bigger but
+   *    no encode cost beyond the RIFF header.
+   *  - `'webm'`: raw recorder output, no transcoding. Useful for
+   *    debugging or if the consumer wants to handle decoding itself.
+   */
+  format?: 'mp3' | 'wav' | 'webm';
   useVad?: boolean;
   preRollMs?: number;
   postRollMs?: number;
+  /** MP3 bitrate (kbps). Only honoured when `format = 'mp3'`. Default 64. */
+  mp3BitrateKbps?: number;
 }
 
 interface ExtractedClip {
@@ -310,13 +342,40 @@ async function extractClip(opts: ExtractOptions): Promise<ExtractedClip> {
       speechStartMs,
       speechEndMs,
     );
-    const wavBlob = encodeWavMono(finalPcm, TARGET_SAMPLE_RATE);
-    const dataUrl = await blobToDataUrl(wavBlob);
+
+    // Anki path: default to MP3 (~10× smaller than WAV PCM) so the user's
+    // sync stays fast and the media folder doesn't balloon. WAV is still
+    // emitted internally on the `pcm` field so Whisper can re-use the
+    // decoded buffer without a second decode pass.
+    const useMp3 = opts.format !== 'wav';
+    let outputBlob: Blob;
+    let outputMime: string;
+    if (useMp3) {
+      try {
+        outputBlob = await encodeMp3Mono(
+          finalPcm,
+          TARGET_SAMPLE_RATE,
+          opts.mp3BitrateKbps ?? 64,
+        );
+        outputMime = 'audio/mpeg';
+      } catch (mp3Err) {
+        // Fall back to WAV if lamejs fails to load (CSP issues, missing
+        // dynamic import support, etc.). The card still gets audio,
+        // just larger.
+        console.warn('[Kivara Lingo] MP3 encode failed, falling back to WAV', mp3Err);
+        outputBlob = encodeWavMono(finalPcm, TARGET_SAMPLE_RATE);
+        outputMime = 'audio/wav';
+      }
+    } else {
+      outputBlob = encodeWavMono(finalPcm, TARGET_SAMPLE_RATE);
+      outputMime = 'audio/wav';
+    }
+    const dataUrl = await blobToDataUrl(outputBlob);
 
     return {
       ok: true,
       dataUrl,
-      mimeType: 'audio/wav',
+      mimeType: outputMime,
       durationMs: Math.round((finalPcm.length / TARGET_SAMPLE_RATE) * 1000),
       speechStartMs: usedVad ? speechStartMs : undefined,
       speechEndMs: usedVad ? speechEndMs : undefined,
@@ -385,10 +444,11 @@ chrome.runtime.onMessage.addListener((rawMsg: unknown, _sender, sendResponse) =>
     void extractClip({
       startMs: msg.startMs,
       endMs: msg.endMs,
-      format: msg.format ?? 'wav',
+      format: msg.format ?? 'mp3',
       useVad: msg.useVad ?? true,
       preRollMs: msg.preRollMs,
       postRollMs: msg.postRollMs,
+      mp3BitrateKbps: msg.mp3BitrateKbps,
     }).then((result) => {
       // Strip the PCM buffer before responding — it's not transferable via
       // chrome.runtime.sendMessage anyway and would just bloat the IPC.

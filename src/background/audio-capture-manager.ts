@@ -184,8 +184,16 @@ export interface ExtractAudioClipOptions {
   preRollMs?: number;
   /** ms kept after detected speech */
   postRollMs?: number;
-  /** 'wav' decodes + transcodes to 16 kHz mono WAV; 'webm' returns the raw recorder output. */
-  format?: 'wav' | 'webm';
+  /**
+   * Output container.
+   *  - `'mp3'` (default for Anki): smallest file, compatible with all Anki
+   *    clients. Encoded via lamejs in the offscreen.
+   *  - `'wav'`: 16 kHz mono PCM. Used internally by Whisper transcription.
+   *  - `'webm'`: raw recorder output, no transcoding.
+   */
+  format?: 'mp3' | 'wav' | 'webm';
+  /** MP3 bitrate in kbps. Only used when format is 'mp3'. Default 64. */
+  mp3BitrateKbps?: number;
 }
 
 export async function extractAudioClip(
@@ -201,10 +209,11 @@ export async function extractAudioClip(
       type: 'OFFSCREEN_EXTRACT_AUDIO_CLIP',
       startMs,
       endMs,
-      format: options.format ?? 'wav',
+      format: options.format ?? 'mp3',
       useVad: options.useVad ?? true,
       preRollMs: options.preRollMs,
       postRollMs: options.postRollMs,
+      mp3BitrateKbps: options.mp3BitrateKbps,
     });
     return result;
   } catch (err) {

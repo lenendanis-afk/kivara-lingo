@@ -34,6 +34,9 @@ export interface SubtitleOverlayProps {
   saveRequestKey?: number | null;
   onSaveCard: (token: string | undefined, sentence: string) => void;
   onTokenHoverChange?: (hovered: boolean) => void;
+  /** Words already in the user's Anki deck — pre-fetched at mount so they
+   *  show the green "saved" highlight from the first frame. */
+  initialSavedWords?: Set<string>;
 }
 
 /**
@@ -49,6 +52,7 @@ export function SubtitleOverlay({
   saveRequestKey,
   onSaveCard,
   onTokenHoverChange,
+  initialSavedWords,
 }: SubtitleOverlayProps) {
   const [isHovered, setIsHovered] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -60,7 +64,9 @@ export function SubtitleOverlay({
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [expandedMWEs, setExpandedMWEs] = useState<Set<string>>(new Set());
   const [altExpandedKey, setAltExpandedKey] = useState<string | null>(null);
-  const [savedTokens, setSavedTokens] = useState<Set<string>>(new Set());
+  const [savedTokens, setSavedTokens] = useState<Set<string>>(
+    () => initialSavedWords ?? new Set(),
+  );
 
   const hoverTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wordHoverTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -273,9 +279,14 @@ export function SubtitleOverlay({
     [onSaveCard, targetSentence],
   );
 
-  // Respond to Ctrl+S / external save requests.
+  // Respond to Ctrl+S / external save requests. We only fire when the
+  // `saveRequestKey` value actually CHANGES (not when other deps like
+  // `handleSaveToken` or `targetSentence` get recreated on re-render).
+  const lastSaveKeyRef = useRef<number | null>(null);
   useEffect(() => {
     if (saveRequestKey == null) return;
+    if (saveRequestKey === lastSaveKeyRef.current) return;
+    lastSaveKeyRef.current = saveRequestKey;
     const key = hoveredKeyRef.current;
     if (key) {
       const dictionary = lookupDictionary(key, cueLanguage);
@@ -284,7 +295,8 @@ export function SubtitleOverlay({
     } else if (targetSentence) {
       handleSaveToken(targetSentence);
     }
-  }, [saveRequestKey, cueLanguage, handleSaveToken, targetSentence]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [saveRequestKey]);
 
   const handleMouseEnter = () => {
     if (hoverTimeout.current) clearTimeout(hoverTimeout.current);
@@ -349,6 +361,19 @@ export function SubtitleOverlay({
         className="relative flex flex-col items-center pointer-events-auto select-text"
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
+        // Block the default focus side-effect of a click on the subtitle
+        // plate. Without this, clicking on a token (or anywhere inside the
+        // plate) makes that element document.activeElement and HBO Max /
+        // Netflix / Disney+ stop seeing keyboard shortcuts. We only need
+        // mousedown — we DON'T preventDefault on mouseup or click, so
+        // selecting text and the per-token onClick handlers keep working.
+        onMouseDown={(e) => {
+          // Allow text selection: only block focus stealing when the
+          // target is a button, span with role, or interactive token.
+          const target = e.target as HTMLElement;
+          if (target.closest('input, textarea, [contenteditable="true"]')) return;
+          e.preventDefault();
+        }}
         data-kivara-hover-zone="true"
       >
         <div className="absolute -top-14 w-full h-14 bg-transparent z-0" />
@@ -362,12 +387,16 @@ export function SubtitleOverlay({
             <span className="text-[9px] font-semibold uppercase tracking-wider text-zinc-500 px-2">Frase</span>
             <div className="w-px h-3.5 bg-zinc-700/80" />
             <button
+              tabIndex={-1}
+              onMouseDown={(e) => e.preventDefault()}
               className="p-1.5 text-zinc-300 hover:text-white hover:bg-zinc-700/50 rounded-md transition-colors"
               title="Reproducir audio de la frase"
             >
               <Volume1 size={14} />
             </button>
             <button
+              tabIndex={-1}
+              onMouseDown={(e) => e.preventDefault()}
               onClick={handleCopy}
               className="p-1.5 text-zinc-300 hover:text-white hover:bg-zinc-700/50 rounded-md transition-colors"
               title="Copiar texto"
@@ -376,6 +405,8 @@ export function SubtitleOverlay({
             </button>
             <div className="w-px h-3.5 bg-zinc-700/80" />
             <button
+              tabIndex={-1}
+              onMouseDown={(e) => e.preventDefault()}
               onClick={(e) => {
                 e.stopPropagation();
                 handleSaveToken(targetSentence);
@@ -578,42 +609,45 @@ export function SubtitleOverlay({
             </div>
 
             {/* Dual caption — native-language full sentence under the
-                source. Lives INSIDE the source plate (same container as
-                the English tokens above) so both lines share one rounded
-                box, matching the original Figma Make mock. The line
-                animates via max-height + opacity so when it's hidden it
-                takes ZERO vertical space — fixing the "jump up by a few
-                pixels when the bilingual line fades in" bug. Prefers the
-                platform's own native track over an MT round-trip; the
-                source is exposed via the `title` tooltip. */}
-            {showDualSubtitle && dualCaptionText && (
+                source. Lives INSIDE the source plate so both lines share
+                one rounded box, exactly like the original Figma Make
+                mock: simple `text-zinc-300` over `text-[0.65em]`,
+                `opacity-90` baseline, no extra plate / weight / tracking.
+
+                Two layout fixes vs. the previous build:
+
+                  1. Always render the wrapper while the dual track is
+                     enabled (even before `dualCaptionText` resolves).
+                     Otherwise mounting the node a few hundred ms later —
+                     when the MT round-trip finishes or the platform's
+                     alt cue arrives — adds `mt-2` (~8 px) to the plate,
+                     which is centered around `top: verticalPercent%`,
+                     and that shifts the source text upward by ~4 px. By
+                     keeping the same DOM structure from the first frame
+                     the source line stays put.
+                  2. Apply `mt-2` only while the row is expanded (hover +
+                     text). Collapsed = `mt-0` so the wrapper truly costs
+                     zero vertical space. The `transition-all` then
+                     animates the margin together with `max-height` and
+                     `opacity`, so the source line settles smoothly when
+                     the user hovers/leaves. */}
+            {showDualSubtitle && (
               <div
                 data-kivara-hover-zone="true"
-                className={`mt-2 transition-all duration-300 ease-out overflow-hidden ${
-                  isHovered ? 'max-h-32 opacity-100' : 'max-h-0 opacity-0'
+                className={`text-[0.65em] opacity-90 transition-all duration-300 ease-out overflow-hidden ${
+                  isHovered && dualCaptionText
+                    ? 'mt-2 max-h-20 opacity-100'
+                    : 'mt-0 max-h-0 opacity-0'
                 }`}
                 title={
                   dualCaptionSource === 'native'
                     ? 'Subtítulo nativo de la plataforma'
                     : 'Traducción automática'
                 }
-                style={{
-                  textAlign: textAlignment,
-                }}
-                aria-hidden={!isHovered}
+                style={{ textAlign: textAlignment }}
+                aria-hidden={!isHovered || !dualCaptionText}
               >
-                <span
-                  className="text-zinc-300"
-                  style={{
-                    // 0.65em from the mock — the bilingual line scales
-                    // with the user's source font-size automatically.
-                    fontSize: '0.65em',
-                    fontWeight: 500,
-                    letterSpacing: '0.025em',
-                  }}
-                >
-                  {dualCaptionText}
-                </span>
+                <span className="text-zinc-300">{dualCaptionText}</span>
               </div>
             )}
             </>

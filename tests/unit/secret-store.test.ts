@@ -1,0 +1,54 @@
+import { describe, it, expect } from 'vitest';
+import { encryptSecret, decryptSecret, isEncrypted, maskSecret } from '../../src/shared/secret-store';
+
+describe('secret-store', () => {
+  it('isEncrypted detects encrypted values', () => {
+    expect(isEncrypted('enc:v1:abc123')).toBe(true);
+    expect(isEncrypted('sk-abc123')).toBe(false);
+    expect(isEncrypted('')).toBe(false);
+    expect(isEncrypted(null)).toBe(false);
+  });
+
+  it('encrypts and decrypts a secret round-trip', async () => {
+    const original = 'sk-my-super-secret-api-key-12345';
+    const encrypted = await encryptSecret(original);
+    expect(encrypted).not.toBe(original);
+    expect(isEncrypted(encrypted)).toBe(true);
+
+    const decrypted = await decryptSecret(encrypted);
+    expect(decrypted).toBe(original);
+  });
+
+  it('passes empty string through unchanged', async () => {
+    const result = await encryptSecret('');
+    expect(result).toBe('');
+  });
+
+  it('is idempotent — re-encrypting an encrypted value returns same', async () => {
+    const original = 'test-key-123';
+    const first = await encryptSecret(original);
+    const second = await encryptSecret(first);
+    expect(second).toBe(first); // already encrypted, returned as-is
+  });
+
+  it('decryptSecret passes plaintext through unchanged', async () => {
+    const plain = 'sk-plaintext-legacy';
+    const result = await decryptSecret(plain);
+    expect(result).toBe(plain);
+  });
+
+  it('maskSecret masks encrypted values', () => {
+    expect(maskSecret('enc:v1:abc123')).toBe('••••••••');
+  });
+
+  it('maskSecret masks plaintext partially', () => {
+    const result = maskSecret('sk-12345678');
+    expect(result).toContain('sk');
+    expect(result).toContain('••••');
+  });
+
+  it('maskSecret returns empty for empty input', () => {
+    expect(maskSecret('')).toBe('');
+    expect(maskSecret(null)).toBe('');
+  });
+});

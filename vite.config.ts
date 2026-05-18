@@ -37,6 +37,15 @@ export default defineConfig({
         offscreen: path.resolve(__dirname, 'src/offscreen/index.html'),
         onboarding: path.resolve(__dirname, 'src/onboarding/index.html'),
       },
+      output: {
+        // Force lamejs into the same chunk as the offscreen processor.
+        // lamejs uses UMD-style internal globals (MPEGMode, Lame, etc.)
+        // that break when Vite splits it into a separate async chunk
+        // because the global initialization runs in the wrong scope.
+        manualChunks(id) {
+          if (id.includes('lamejs')) return 'offscreen';
+        },
+      },
     },
   },
 
