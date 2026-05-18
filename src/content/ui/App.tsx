@@ -8,6 +8,7 @@ import { SubtitleOverlay } from './SubtitleOverlay';
 import { applyCleanupCss } from './cleanup-css';
 import { useKivaraStore } from '../../shared/store';
 import { captureFrame } from '../capture/frame';
+import { detectLanguage } from '../nlp/detect-language';
 import type { CreateCardRequest, CreateCardResponse } from '../../shared/types';
 import type { SubtitleSource } from '../platform-adapters/types';
 
@@ -50,6 +51,9 @@ export function App({ adapter, videoElement, videoOverlayRoot }: AppProps) {
   // a remote MT translation — see SubtitleOverlay for the priority chain.
   const [altCue, setAltCue] = useState<ActiveCue | null>(null);
   const [saveTick, setSaveTick] = useState<number | null>(null);
+  // Words the user already has in their Anki deck — fetched once at mount
+  // so the overlay can mark them as "saved" (green) from the first frame.
+  const [deckSavedWords, setDeckSavedWords] = useState<Set<string>>(new Set());
   const cueLanguageRef = useRef('en');
   // Tracks whether we (not the user, not the platform) requested the current
   // pause. We only resume if we ourselves paused — otherwise we'd fight with
@@ -84,6 +88,29 @@ export function App({ adapter, videoElement, videoOverlayRoot }: AppProps) {
     };
   }, [cleanup.hideUI, cleanup.hideShadows, adapter?.platform, enabled]);
 
+  // Fetch words already in the user's Anki deck so the overlay can render
+  // them with the "saved" green highlight from the first frame. Non-blocking;
+  // if AnkiConnect is unreachable, the set stays empty (no visual impact).
+  useEffect(() => {
+    if (!enabled) return;
+    const { deckName, ankiUrl, apiKey } = ankiMapping;
+    if (!deckName) return;
+    void (async () => {
+      try {
+        const resp = (await sendMessage(
+          'ANKI_SAVED_WORDS',
+          { deckName, url: ankiUrl, apiKey },
+          'background',
+        )) as { words?: string[] };
+        if (resp?.words?.length) {
+          setDeckSavedWords(new Set(resp.words));
+        }
+      } catch {
+        /* AnkiConnect not running — ignore silently */
+      }
+    })();
+  }, [enabled, ankiMapping]);
+
   // Sync dark mode on hosts + overlay root so theme.css `.dark` selector works.
   useEffect(() => {
     const mainHost = document.getElementById('kivara-lingo-host');
@@ -115,7 +142,7 @@ export function App({ adapter, videoElement, videoOverlayRoot }: AppProps) {
         return;
       }
       const first = cues[0];
-      cueLanguageRef.current = first.language || 'en';
+      cueLanguageRef.current = detectLanguage(first.text, first.language);
       setActiveCue({
         id: first.id,
         text: first.text,
@@ -127,7 +154,7 @@ export function App({ adapter, videoElement, videoOverlayRoot }: AppProps) {
     });
     const initialCue = adapter.getActiveCue?.();
     if (initialCue) {
-      cueLanguageRef.current = initialCue.language || 'en';
+      cueLanguageRef.current = detectLanguage(initialCue.text, initialCue.language);
       setActiveCue({
         id: initialCue.id,
         text: initialCue.text,
@@ -343,65 +370,41 @@ export function App({ adapter, videoElement, videoOverlayRoot }: AppProps) {
     };
   }, [videoElement]);
 
-  // Forward common player keyboard shortcuts (Space, F, M, arrows, K/J/L,
-  // 0–9, …) to the underlying <video> element whenever the keypress
-  // originates from inside Kivara's Shadow DOM. Platforms gate their own
-  // key handlers on focus / event-target; once the user clicks a Kivara
-  // token or the side panel, the player no longer sees its own
-  // shortcuts. By re-dispatching the event on the <video> we let the
-  // platform handle the key as if it had focus all along — Space still
-  // pauses, F still fullscreens, arrows still seek.
+  // Make sure player keyboard shortcuts (Space, F, K, arrows…) keep working
+  // even after the user has interacted with Kivara's UI.
   //
-  // Caveats handled below:
-  //   • Modifier combinations (Ctrl / Alt / Meta) are NEVER forwarded so
-  //     OS shortcuts (Alt+Tab, Ctrl+W…) and our own `chrome.commands`
-  //     (Ctrl+S, Alt+C…) keep working.
-  //   • Typing inside any Kivara <input>/<textarea>/contenteditable is
-  //     left alone — the user is typing a deck name, an API key, etc.
-  //   • The synthetic event we dispatch can't loop because its
-  //     composedPath() doesn't include any Kivara host.
+  // Why this is tricky: every streaming platform binds its key handlers in
+  // a different way. YouTube uses `document.addEventListener('keydown')`
+  // and gates on `document.activeElement`. HBO Max checks the event target.
+  // Netflix uses a global handler too. The unifying assumption is that
+  // **the original native keydown** has to reach the platform's listener
+  // with no Kivara element on the event target chain — synthetic events
+  // (`isTrusted: false`) are deliberately ignored by all of them.
+  //
+  // So instead of cloning and dispatching, we simply *get out of the way*:
+  //
+  //   1. If a player key is pressed while focus is inside Kivara (a button,
+  //      a token, the panel itself), we blur the focused element so the
+  //      platform's `document.activeElement` check passes.
+  //   2. We DO NOT `preventDefault` or `stopPropagation` — the original
+  //      event keeps bubbling/propagating to document/window listeners,
+  //      which is where every platform binds its shortcuts.
+  //   3. Only modifier combinations and typing inside <input>/<textarea>
+  //      are left alone (the user is typing a deck name, an API key…).
+  //
+  // This removes the "synthetic events are ignored" failure mode entirely
+  // and lets each platform's native shortcut handling do its job.
   useEffect(() => {
-    if (!videoElement) return;
     const PLAYER_KEYS = new Set<string>([
-      ' ',
-      'Spacebar', // legacy IE
-      'k',
-      'K',
-      'f',
-      'F',
-      'm',
-      'M',
-      'c',
-      'C',
-      't',
-      'T',
-      'i',
-      'I',
-      'j',
-      'J',
-      'l',
-      'L',
-      'ArrowUp',
-      'ArrowDown',
-      'ArrowLeft',
-      'ArrowRight',
-      '0',
-      '1',
-      '2',
-      '3',
-      '4',
-      '5',
-      '6',
-      '7',
-      '8',
-      '9',
-      ',',
-      '.',
-      '<',
-      '>',
+      ' ', 'Spacebar',
+      'k', 'K', 'f', 'F', 'm', 'M', 'c', 'C', 't', 'T', 'i', 'I',
+      'j', 'J', 'l', 'L',
+      'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
+      '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
+      ',', '.', '<', '>',
     ]);
 
-    const forward = (e: KeyboardEvent) => {
+    const releaseFocus = (e: KeyboardEvent) => {
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       if (!PLAYER_KEYS.has(e.key)) return;
 
@@ -413,6 +416,7 @@ export function App({ adapter, videoElement, videoOverlayRoot }: AppProps) {
       );
       if (!insideKivara) return;
 
+      // Don't hijack the keypress while the user is typing.
       const inEditable = path.some(
         (n) =>
           n instanceof HTMLInputElement ||
@@ -421,25 +425,87 @@ export function App({ adapter, videoElement, videoOverlayRoot }: AppProps) {
       );
       if (inEditable) return;
 
-      e.preventDefault();
-      e.stopPropagation();
-      const cloned = new KeyboardEvent(e.type, {
-        key: e.key,
-        code: e.code,
-        bubbles: true,
-        cancelable: true,
-        composed: true,
-      });
-      videoElement.dispatchEvent(cloned);
+      // Drop focus to body so the platform's `document.activeElement`
+      // gating treats the keypress as if Kivara wasn't there. The original
+      // event keeps propagating — we add NO preventDefault / stopProp.
+      const active = document.activeElement as HTMLElement | null;
+      if (active && active !== document.body && typeof active.blur === 'function') {
+        try {
+          active.blur();
+        } catch {
+          /* ignore — element may have been removed */
+        }
+      }
     };
 
-    window.addEventListener('keydown', forward, { capture: true });
-    window.addEventListener('keyup', forward, { capture: true });
+    window.addEventListener('keydown', releaseFocus, { capture: true });
     return () => {
-      window.removeEventListener('keydown', forward, { capture: true });
-      window.removeEventListener('keyup', forward, { capture: true });
+      window.removeEventListener('keydown', releaseFocus, { capture: true });
     };
-  }, [videoElement]);
+  }, []);
+
+  // Capture our own keyboard shortcuts at the document level. The
+  // `chrome.commands` API in manifest is just a SUGGESTION — Chrome doesn't
+  // bind anything until the user goes to chrome://extensions/shortcuts and
+  // assigns it. So Ctrl+S triggers the browser's native "Save As" dialog,
+  // Alt+R / Alt+K / Alt+C just bubble out, and the user has no idea why.
+  //
+  // We avoid that by listening for our shortcuts directly in the content
+  // script. preventDefault stops "Save As" from opening; the action is the
+  // same code paths the chrome.commands handler would take.
+  useEffect(() => {
+    const onShortcut = (e: KeyboardEvent) => {
+      // Ignore typing inside any text field — even Kivara's own popover
+      // inputs (deck name, API key…).
+      const path = e.composedPath();
+      const inEditable = path.some(
+        (n) =>
+          n instanceof HTMLInputElement ||
+          n instanceof HTMLTextAreaElement ||
+          (n instanceof HTMLElement && n.isContentEditable),
+      );
+      if (inEditable) return;
+
+      // Ctrl/Cmd + S → Guardar tarjeta. Always preventDefault so the
+      // browser's "Save As" dialog never opens, even if Kivara has no
+      // active cue (in which case it's a no-op rather than disruptive).
+      // Guard against key-repeat (holding Ctrl+S fires dozens of keydown
+      // events) — only trigger once per physical press.
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && (e.key === 's' || e.key === 'S')) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.repeat) return; // held down — don't fire again
+        setSaveTick(Date.now());
+        return;
+      }
+
+      // Alt+K → toggle panel. Alt+R → repeat cue. Alt+C → toggle Kivara.
+      // We don't preventDefault on Alt by itself because Chrome opens the
+      // menu bar on Alt-only press; only the combos.
+      if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+        const k = e.key.toLowerCase();
+        if (k === 'k') {
+          e.preventDefault();
+          e.stopPropagation();
+          setPanelOpen(!useKivaraStore.getState().panelOpen);
+        } else if (k === 'r' && activeCue?.start != null && videoElement) {
+          e.preventDefault();
+          e.stopPropagation();
+          videoElement.currentTime = activeCue.start / 1000;
+          void videoElement.play().catch(() => {});
+        } else if (k === 'c') {
+          e.preventDefault();
+          e.stopPropagation();
+          useKivaraStore.getState().setEnabled(!useKivaraStore.getState().enabled);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', onShortcut, { capture: true });
+    return () => {
+      window.removeEventListener('keydown', onShortcut, { capture: true });
+    };
+  }, [activeCue, setPanelOpen, videoElement]);
 
   // Bridge runtime messages (from background) → local actions.
   useEffect(() => {
@@ -456,16 +522,25 @@ export function App({ adapter, videoElement, videoOverlayRoot }: AppProps) {
             setSaveTick(Date.now());
             break;
           case 'toggle_subtitles':
-            // Phase 2: hide overlay
+            // Toggle enabled state — hides the overlay completely.
+            useKivaraStore.getState().setEnabled(!useKivaraStore.getState().enabled);
             break;
-          case 'repeat_phrase':
+          case 'repeat_cue':
             if (videoElement && activeCue?.start != null) {
               videoElement.currentTime = activeCue.start / 1000;
               void videoElement.play().catch(() => {});
             }
             break;
-          case 'show_translation':
-            // No-op for now: translation already shows on hover.
+          case 'recapture_frame':
+            // Re-fire the save tick so the orchestrator re-captures frame
+            // for the current cue without requiring the user to hover a
+            // specific token first.
+            if (activeCue) {
+              setSaveTick(Date.now());
+            }
+            break;
+          case 'toggle_panel':
+            setPanelOpen(!useKivaraStore.getState().panelOpen);
             break;
           default:
             break;
@@ -476,10 +551,16 @@ export function App({ adapter, videoElement, videoOverlayRoot }: AppProps) {
     return () => chrome.runtime.onMessage.removeListener(handler);
   }, [activeCue, setPanelOpen, videoElement]);
 
-  const handleSaveCard = async (token: string | undefined, sentence: string) => {
+  const handleSaveCard = useCallback(async (token: string | undefined, sentence: string) => {
     if (!enabled) return;
     const tokenValue = token?.trim() || sentence.trim();
     if (!tokenValue) return;
+
+    // Validate deck mapping before attempting to save (Bug 6 fix).
+    if (!ankiMapping.deckName) {
+      toast.error('Configura un mazo en Anki antes de guardar. (Ajustes → Tarjetas)');
+      return;
+    }
 
     let frameDataUrl: string | null = null;
     if (videoElement) {
@@ -489,9 +570,14 @@ export function App({ adapter, videoElement, videoOverlayRoot }: AppProps) {
     const request: CreateCardRequest = {
       token: tokenValue,
       sentence,
+      // Include the native-language sentence translation (dual subtitle)
+      // so the card can show both the source sentence and its translation.
+      sentenceTranslation: altCue?.text?.trim() || undefined,
       frame: frameDataUrl ?? undefined,
       cueStart: activeCue?.start,
       cueEnd: activeCue?.end,
+      // Anchor video-time → wall-clock translation for the audio slicer.
+      videoTimeAtSave: videoElement ? videoElement.currentTime * 1000 : undefined,
       language: cueLanguageRef.current,
       platform: adapter?.platform,
     };
@@ -533,7 +619,7 @@ export function App({ adapter, videoElement, videoOverlayRoot }: AppProps) {
       const reason = err instanceof Error ? err.message : 'desconocido';
       toast.error(`Error guardando en Anki: ${reason}`);
     }
-  };
+  }, [enabled, ankiMapping, videoElement, activeCue, altCue, adapter?.platform]);
 
   const overlayPortal = useMemo(() => {
     if (!videoOverlayRoot || !enabled) return null;
@@ -550,20 +636,25 @@ export function App({ adapter, videoElement, videoOverlayRoot }: AppProps) {
           saveRequestKey={saveTick}
           onSaveCard={handleSaveCard}
           onTokenHoverChange={handleTokenHoverChange}
+          initialSavedWords={deckSavedWords}
         />
       </div>,
       videoOverlayRoot,
     );
+    // handleSaveCard and handleTokenHoverChange are stable useCallbacks —
+    // intentionally excluded to prevent unnecessary re-renders / remounts
+    // that cause the saveTick loop (Bug 3).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     activeCue,
     altCue,
+    deckSavedWords,
     enabled,
     isDarkMode,
     mode,
     saveTick,
     subtitleStyles,
     videoOverlayRoot,
-    handleTokenHoverChange,
   ]);
 
   return (

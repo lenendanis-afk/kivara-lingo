@@ -12,11 +12,29 @@ import { DEFAULT_TRANSLATE } from '../shared/store';
 import { callChain, callOne } from './translate-providers';
 import type { ChainStep } from './translate-providers';
 import { getDB, translationCacheKey } from '../shared/db';
+import { decryptSecret } from '../shared/secret-store';
 
 const STORE_KEY = 'kivara-lingo-state';
 
 let lastCallAt = 0;
 const DEBOUNCE_MS = 200;
+
+/**
+ * Strip TMX/XLIFF placeholder tags (`<g id="…">…</g>`) and any other stray
+ * HTML/XML markup from a translation string. Some providers — most notably
+ * MyMemory and LibreTranslate when the source contains markup — return their
+ * internal placeholders as part of the translated payload. We sanitize at
+ * the cache boundary so those tags never reach the popover or the bilingual
+ * subtitle line.
+ */
+function sanitizeTranslation(value: string): string {
+  if (!value || !value.includes('<')) return value;
+  const stripped = value
+    .replace(/<[^>]+>/g, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+  return stripped || value;
+}
 
 /**
  * Read the persisted Zustand store from chrome.storage.sync, then merge with
@@ -42,6 +60,15 @@ async function loadSettings(): Promise<TranslateSettings> {
       if (!Array.isArray(merged.freeChain)) merged.freeChain = DEFAULT_TRANSLATE.freeChain;
       if (!Array.isArray(merged.premiumChain))
         merged.premiumChain = DEFAULT_TRANSLATE.premiumChain;
+
+      // Transparent decryption of premium provider tokens. Cleartext
+      // values are passed through unchanged so legacy installs and
+      // self-hosted LibreTranslate without a key keep working.
+      if (merged.deeplToken) merged.deeplToken = await decryptSecret(merged.deeplToken);
+      if (merged.googleToken) merged.googleToken = await decryptSecret(merged.googleToken);
+      if (merged.libreTranslateToken) {
+        merged.libreTranslateToken = await decryptSecret(merged.libreTranslateToken);
+      }
       return merged;
     }
   } catch (err) {
@@ -53,6 +80,10 @@ async function loadSettings(): Promise<TranslateSettings> {
 /**
  * Phase 1 surface: returns a DictionaryEntry-ish blob assembled either from
  * the bundled dictionary or from the live translation provider chain.
+ *
+ * If the bundled dictionary has the word but is missing phonetic/monolingual,
+ * we still call the remote provider and merge the remote translation into the
+ * local entry so the Anki card gets populated fields.
  */
 export async function translateToken(
   token: string,
@@ -60,18 +91,34 @@ export async function translateToken(
 ): Promise<DictionaryEntry | null> {
   // Always try the local dictionary first — it has phonetics and definitions.
   const entry = lookupDictionary(token, lang);
-  if (entry) return entry;
 
-  // Fall back to the configured provider(s) for unknown tokens.
+  // If the local entry is complete (has phonetic AND monolingual), return it.
+  if (entry && entry.phonetic && entry.monolingual) return entry;
+
+  // Fall back to the configured provider(s) for unknown tokens OR to
+  // supplement a local entry that is missing fields.
   const settings = await loadSettings();
-  if (settings.mode === 'single' && settings.provider === 'offline') return null;
+  if (settings.mode === 'single' && settings.provider === 'offline') return entry ?? null;
 
   const remote = await translateText({
     text: token,
     sourceLang: lang,
     targetLang: settings.targetLanguage,
   });
-  if (!remote.ok || !remote.translatedText) return null;
+
+  if (!remote.ok || !remote.translatedText) return entry ?? null;
+
+  // If we had a local entry, merge the remote translation into the missing
+  // fields so the card doesn't show empty placeholders.
+  if (entry) {
+    return {
+      ...entry,
+      translation: entry.translation || remote.translatedText,
+      bilingual: entry.bilingual || remote.translatedText,
+      // phonetic and monolingual stay as-is if the local dict has them
+    };
+  }
+
   return {
     token,
     type: token.includes(' ') ? 'phrase' : 'word',
@@ -134,7 +181,9 @@ export async function translateText(req: TranslateRequest): Promise<TranslateRes
     if (cached && cached.expiresAt > Date.now()) {
       return {
         ok: true,
-        translatedText: cached.translatedText,
+        // Older cached entries may predate the sanitizer — clean on read so
+        // existing users don't have to nuke IndexedDB.
+        translatedText: sanitizeTranslation(cached.translatedText),
         provider: cacheProvider,
         cached: true,
       };
@@ -195,6 +244,10 @@ export async function translateText(req: TranslateRequest): Promise<TranslateRes
 
   // 4. Cache successful results.
   if (result.ok) {
+    // Defensive: scrub provider markup before caching. Once it lands in the
+    // cache the same string is re-served forever, so this is the right
+    // single chokepoint to clean translations.
+    const cleanedText = sanitizeTranslation(result.translatedText);
     const ttl = (settings.cacheTtlDays || 30) * 24 * 60 * 60 * 1000;
     try {
       await getDB().translation_cache.put({
@@ -203,7 +256,7 @@ export async function translateText(req: TranslateRequest): Promise<TranslateRes
         sourceLang: req.sourceLang,
         targetLang: target,
         sourceText: text,
-        translatedText: result.translatedText,
+        translatedText: cleanedText,
         expiresAt: Date.now() + ttl,
         createdAt: Date.now(),
       });
@@ -212,7 +265,7 @@ export async function translateText(req: TranslateRequest): Promise<TranslateRes
     }
     return {
       ok: true,
-      translatedText: result.translatedText,
+      translatedText: cleanedText,
       provider: result.provider,
       cached: false,
     };

@@ -21,27 +21,44 @@ dist-ssr/
 !.vscode/settings.json
 .idea
 .DS_Store
+Thumbs.db
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
 
+# Kiro workspace settings (personal MCP configs, etc.)
+.kiro/settings/
+
 # Env files
 .env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-.env.qa.local
+.env.*
+!.env.example
 
-# Vite caches
+# Vite / TypeScript caches
 node_modules/.vite/
 .eslintcache
+*.tsbuildinfo
+.turbo/
 
-youtube_page_template.html
+# Test coverage & output
+coverage/
+
+# Throwaway test/debug scripts at root
+test.js
+test.cjs
+test.mjs
+
+# Page templates used for local debugging (contain personal HTML snapshots)
+*_page_template.html
+
+# Chrome extension packaging artifacts
+*.crx
+*.pem
+*.xpi
+web-ext-artifacts/
 
 # Avoid mixing package managers — the project is on pnpm (pnpm-lock.yaml).
-# A stale npm lockfile silently dropped 'fflate' once and broke the build.
 package-lock.json
 yarn.lock

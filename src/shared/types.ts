@@ -209,8 +209,16 @@ export interface TranslateSettings {
    * credential is silently skipped.
    */
   premiumChain: TranslateProvider[];
-  /** Native target language (BCP-47). Default 'es'. */
+  /** Native target language (BCP-47). Default 'es'. This is the user's
+   *  mother tongue — translations go INTO this language. */
   targetLanguage: string;
+  /**
+   * Source language the user is LEARNING (BCP-47). Default 'en'. Used to:
+   *  - Select which subtitle track to show (prefer English over others).
+   *  - Tell the translate chain which direction to translate.
+   *  - Inform the tokenizer which dictionary to load.
+   */
+  sourceLang: string;
   /** DeepL API token (free or pro) */
   deeplToken: string;
   /** Google Cloud Translate v3 / v2 API key */
@@ -243,8 +251,18 @@ export interface TranslateSettings {
 export interface AsrSettings {
   /** Whether the user opted-in to on-device transcription as fallback */
   enabled: boolean;
-  /** 'tiny' is ~75MB, 'small' ~466MB. Wired via Whisper.cpp WASM. */
-  model: 'tiny' | 'base' | 'small';
+  /**
+   * Whisper model size. The trade-off is download size vs. transcription
+   * accuracy and speed. Whisper.cpp WASM runs on CPU only (no GPU), so
+   * larger models are 5-10× slower on the same machine — this is more
+   * about hardware budget than network.
+   *
+   *  - `tiny`   — ~75 MB,  fastest, ~5 % WER on clean speech.
+   *  - `base`   — ~150 MB, ~3.5 % WER. Good middle ground.
+   *  - `small`  — ~466 MB, ~2.5 % WER. Slow on older laptops.
+   *  - `medium` — ~1.5 GB, ~2 % WER. Only for desktop / multi-core.
+   */
+  model: 'tiny' | 'base' | 'small' | 'medium';
   /**
    * Optional override for the Whisper.cpp glue script URL. Defaults to a
    * pinned jsdelivr CDN URL inside `whisper-asr.ts`. Surfaced here so the
@@ -252,8 +270,9 @@ export interface AsrSettings {
    */
   glueUrl?: string;
   /**
-   * Optional override for the ggml model URL. Defaults to the HuggingFace
-   * mirror of `ggml-tiny.en.bin` in `whisper-asr.ts`.
+   * Optional override for the ggml model URL. Leave empty to use the
+   * preset that matches `model`. The preset table lives in
+   * `whisper-asr.ts::DEFAULT_MODEL_URLS`.
    */
   modelUrl?: string;
 }
@@ -293,6 +312,39 @@ export type TranscribeResponse =
   | { ok: false; error: string; transient?: boolean };
 
 export type AiProvider = 'openai' | 'anthropic' | 'google-ai' | 'disabled';
+
+/**
+ * Premium TTS providers that emit a downloadable audio blob (so we can
+ * attach the file to an Anki note instead of just speaking it).
+ *
+ *  - `'auto'`: prefer any premium provider with credentials, otherwise
+ *    fall back to OpenAI tts-1 (requires OpenAI provider configured) and
+ *    finally to the SpeechSynthesis template.
+ *  - `'openai'`: force OpenAI tts-1 — uses the same `apiKey` the user
+ *    already configured under AI provider when `ai.provider === 'openai'`.
+ *  - `'elevenlabs'`: 11Labs `text-to-speech` endpoint. Higher fidelity,
+ *    ~10× more expensive than OpenAI.
+ *  - `'disabled'`: never make remote TTS calls. Cards keep the cue audio
+ *    if available, or fall back to Anki's `{{tts}}` template.
+ */
+export type PremiumTtsProvider = 'auto' | 'openai' | 'elevenlabs' | 'disabled';
+
+export interface TtsSettings {
+  /** Which provider supplies the downloadable MP3 attached to Anki cards. */
+  provider: PremiumTtsProvider;
+  /** ElevenLabs API key (xi-api-key header). */
+  elevenLabsApiKey: string;
+  /**
+   * ElevenLabs voice ID. Defaults to `21m00Tcm4TlvDq8ikWAM` ("Rachel"),
+   * which is the canonical sample voice and works without a paid plan.
+   */
+  elevenLabsVoiceId: string;
+  /**
+   * ElevenLabs model. `eleven_multilingual_v2` covers EN/ES/FR/DE/etc.
+   * `eleven_monolingual_v1` is cheaper but English-only.
+   */
+  elevenLabsModelId: string;
+}
 
 export interface AiSettings {
   /** Active AI backend */
@@ -459,13 +511,22 @@ export interface CaptureContext {
 export interface CreateCardRequest {
   token: string;
   sentence: string;
+  /** The native-language translation of the full sentence (from dual subtitle
+   *  or MT provider). Filled by the content script when available. */
+  sentenceTranslation?: string;
   /** Optional: ISO-encoded frame as data URL (jpeg) */
   frame?: string;
   /** Optional: audio data URL (webm or mp3) */
   audio?: string;
-  /** Cue start/end in ms (informational) */
+  /** Cue start/end in ms (video-time) */
   cueStart?: number;
   cueEnd?: number;
+  /**
+   * Video element's currentTime (ms) at the moment the user triggered save.
+   * Used together with cueStart/cueEnd to translate video-time → wall-clock
+   * for the rolling audio buffer slice.
+   */
+  videoTimeAtSave?: number;
   language?: string;
   platform?: string;
 }

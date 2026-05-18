@@ -43,6 +43,21 @@ console.log('[Kivara Lingo] service worker booting');
 
 const STORE_KEY = 'kivara-lingo-state';
 const RETRY_ALARM = 'kivara-lingo-retry-pending';
+const OFFSCREEN_KEEPALIVE_ALARM = 'kivara-lingo-offscreen-keepalive';
+
+/**
+ * Chrome MV3 offscreen documents auto-close after ~30 s of inactivity.
+ * While audio capture is active we ping the offscreen every 20 s to keep
+ * the document alive.
+ */
+async function ensureOffscreenKeepalive(): Promise<void> {
+  const status = getAudioCaptureStatus();
+  if (status.active) {
+    await chrome.alarms.create(OFFSCREEN_KEEPALIVE_ALARM, { periodInMinutes: 0.33 }); // ~20s
+  } else {
+    await chrome.alarms.clear(OFFSCREEN_KEEPALIVE_ALARM);
+  }
+}
 
 /**
  * AnkiConnect's default `webCorsOriginList` is `["http://localhost"]`.
@@ -251,6 +266,35 @@ onMessage('ANKI_CREATE_DECK', async ({ data }) => {
   }
 });
 
+/**
+ * Fetch words the user already has in their configured deck. Used by the
+ * content script to mark tokens as "saved" (green highlight) from the first
+ * frame, without requiring the user to hover each word first.
+ */
+onMessage('ANKI_SAVED_WORDS', async ({ data }) => {
+  const { url, apiKey } = await resolveAnkiAuth(data);
+  const deckName = (data as { deckName?: string } | undefined)?.deckName;
+  const fieldName = (data as { fieldName?: string } | undefined)?.fieldName || 'Front';
+  if (!deckName) return asJson({ words: [] as string[] });
+  try {
+    const noteIds = await ankiConnect.findNotes(`deck:"${deckName}"`, url, apiKey);
+    if (!noteIds.length) return asJson({ words: [] as string[] });
+    // Limit to last 5000 notes to avoid huge IPC payloads.
+    const subset = noteIds.slice(-5000);
+    const infos = await ankiConnect.notesInfo(subset, url, apiKey);
+    const words = infos
+      .map((n) => {
+        const field = n.fields[fieldName] ?? Object.values(n.fields)[0];
+        return field?.value?.toLowerCase().trim() ?? '';
+      })
+      .filter(Boolean);
+    return asJson({ words });
+  } catch (err) {
+    console.warn('[Kivara Lingo] ANKI_SAVED_WORDS failed', err);
+    return asJson({ words: [] as string[] });
+  }
+});
+
 onMessage('START_AUDIO_CAPTURE', async ({ data }) => {
   let tabId = (data as { tabId?: number } | undefined)?.tabId;
   if (tabId == null) {
@@ -266,11 +310,15 @@ onMessage('START_AUDIO_CAPTURE', async ({ data }) => {
   }
   const bufferSec = await loadCaptureBufferSec();
   const result = await startAudioCapture(tabId, bufferSec);
+  // Start the keepalive ping so Chrome doesn't close the offscreen document.
+  if (result.ok) void ensureOffscreenKeepalive();
   return asJson(result);
 });
 
 onMessage('STOP_AUDIO_CAPTURE', async () => {
   await stopAudioCapture();
+  // Stop the keepalive — offscreen will close on its own.
+  await chrome.alarms.clear(OFFSCREEN_KEEPALIVE_ALARM);
   return asJson({ ok: true });
 });
 
@@ -280,13 +328,15 @@ onMessage('AUDIO_CAPTURE_STATUS', async () => {
 });
 
 onMessage('EXTRACT_AUDIO_CLIP', async ({ data }) => {
-  const { startMs, endMs } = (data as { startMs: number; endMs: number }) ?? {};
+  const req = (data as { startMs: number; endMs: number; format?: 'mp3' | 'wav' | 'webm' }) ?? {};
+  const { startMs, endMs } = req;
   if (typeof startMs !== 'number' || typeof endMs !== 'number') {
     return asJson({ ok: false, error: 'startMs/endMs required' } satisfies AudioClipResponse);
   }
   const capture = await loadCaptureSettings();
   const result = await extractAudioClip(startMs, endMs, {
-    format: 'wav',
+    // Honour the caller's format preference; default to 'mp3' for Anki.
+    format: req.format ?? 'mp3',
     useVad: capture.endDetect === 'vad',
     preRollMs: capture.preRoll,
     postRollMs: capture.postRoll,
@@ -478,6 +528,22 @@ chrome.runtime.onStartup.addListener(async () => {
 });
 
 chrome.alarms.onAlarm.addListener(async (alarm) => {
+  if (alarm.name === OFFSCREEN_KEEPALIVE_ALARM) {
+    // Ping the offscreen document to reset Chrome's 30 s inactivity timer.
+    // If the document is gone (user killed it, unexpected GC), restart capture.
+    try {
+      const status = getAudioCaptureStatus();
+      if (!status.active) {
+        await chrome.alarms.clear(OFFSCREEN_KEEPALIVE_ALARM);
+        return;
+      }
+      await chrome.runtime.sendMessage({ type: 'OFFSCREEN_STATUS' });
+    } catch {
+      // If the message fails, the offscreen is gone. Clear alarm.
+      await chrome.alarms.clear(OFFSCREEN_KEEPALIVE_ALARM);
+    }
+    return;
+  }
   if (alarm.name !== RETRY_ALARM) return;
   try {
     const [mapping, capture] = await Promise.all([loadMapping(), loadCaptureSettings()]);
@@ -493,6 +559,15 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type === 'TOGGLE_PANEL_FROM_POPUP') {
     void broadcastToActive({ type: 'TOGGLE_PANEL' });
+    sendResponse({ ok: true });
+    return true;
+  }
+  // Content script requests opening a URL in a new tab (Definir / Buscar
+  // buttons). Using chrome.tabs.create ensures it opens a real new tab
+  // instead of navigating within the YouTube/HBO SPA, which would kill
+  // the video playback.
+  if (message?.type === 'OPEN_URL' && typeof message.url === 'string') {
+    void chrome.tabs.create({ url: message.url });
     sendResponse({ ok: true });
     return true;
   }

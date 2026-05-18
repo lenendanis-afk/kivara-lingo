@@ -1,16 +1,20 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Keyboard, EyeOff, ChevronDown, Mic, Image as ImageIcon, Wand2,
-  SlidersHorizontal, BookOpen, Languages, Volume2, Sparkles,
+  SlidersHorizontal, BookOpen, Languages, Volume2, Sparkles, Mic2,
 } from 'lucide-react';
 import { useKivaraStore } from '../../../shared/store';
-import type { AiProvider, TranslateProvider } from '../../../shared/types';
+import type { AiProvider, PremiumTtsProvider, TranslateProvider } from '../../../shared/types';
+import {
+  WHISPER_MODEL_PRESETS,
+  type WhisperModelKey,
+} from '../../../shared/whisper-presets';
 import { DictPacksSection } from './DictPacksSection';
 
 export function SettingsTab() {
   const {
     capture, setCapture, cleanup, setCleanup, mode, setMode,
-    translate, setTranslate, asr, setAsr, ai, setAi,
+    translate, setTranslate, asr, setAsr, ai, setAi, tts, setTts,
   } = useKivaraStore();
   const [showAdvanced, setShowAdvanced] = useState(false);
 
@@ -176,14 +180,38 @@ export function SettingsTab() {
               </select>
             </Row>
           )}
-          <Row label="Idioma destino">
-            <input
-              type="text"
-              value={translate.targetLanguage}
-              onChange={(e) => setTranslate({ ...translate, targetLanguage: e.target.value.trim() || 'es' })}
-              placeholder="es"
-              className="sl-input w-full text-[11px] px-2 py-1 rounded border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-200"
-            />
+          <Row label="Idioma que aprendo">
+            <select
+              value={translate.sourceLang || 'en'}
+              onChange={(e) => setTranslate({ ...translate, sourceLang: e.target.value })}
+              className="sl-select w-full text-[11px] px-2 py-1 rounded border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-200"
+            >
+              <option value="en">Inglés (English)</option>
+              <option value="fr">Francés (Français)</option>
+              <option value="de">Alemán (Deutsch)</option>
+              <option value="it">Italiano</option>
+              <option value="pt">Portugués</option>
+              <option value="ja">Japonés (日本語)</option>
+              <option value="ko">Coreano (한국어)</option>
+              <option value="zh">Chino (中文)</option>
+            </select>
+          </Row>
+          <Row label="Mi idioma nativo">
+            <select
+              value={translate.targetLanguage || 'es'}
+              onChange={(e) => setTranslate({ ...translate, targetLanguage: e.target.value })}
+              className="sl-select w-full text-[11px] px-2 py-1 rounded border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-200"
+            >
+              <option value="es">Español</option>
+              <option value="en">Inglés (English)</option>
+              <option value="fr">Francés (Français)</option>
+              <option value="de">Alemán (Deutsch)</option>
+              <option value="it">Italiano</option>
+              <option value="pt">Portugués</option>
+              <option value="ja">Japonés (日本語)</option>
+              <option value="ko">Coreano (한국어)</option>
+              <option value="zh">Chino (中文)</option>
+            </select>
           </Row>
           <Row label="Subtítulo bilingüe">
             <Toggle
@@ -347,13 +375,154 @@ export function SettingsTab() {
           )}
         </Section>
 
-        {/* ASR */}
+        {/* TTS premium — audio descargable adjuntado a las tarjetas Anki.
+            Permite elegir entre la cadena `chrome.tts → SpeechSynthesis`
+            (gratis, voces del SO) y dos proveedores remotos con archivos
+            adjuntos: OpenAI tts-1 (~USD 0.015 / 1k chars) y ElevenLabs
+            (mejor calidad, ~USD 0.18 / 1k chars). El modo `auto` elige
+            ElevenLabs si hay credenciales, si no OpenAI, si no la cadena
+            offline. */}
+        <Section
+          icon={<Mic2 size={10} />}
+          title="TTS premium"
+          headerRight={
+            <span className="text-[10px] font-medium text-zinc-500 dark:text-zinc-500 normal-case tracking-normal">
+              {tts.provider === 'disabled' ? 'off' : tts.provider}
+            </span>
+          }
+        >
+          <Row label="Proveedor">
+            <select
+              value={tts.provider}
+              onChange={(e) => setTts({ ...tts, provider: e.target.value as PremiumTtsProvider })}
+              className="sl-select w-full text-[11px] px-2 py-1 rounded border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-200"
+            >
+              <option value="auto">Auto (ElevenLabs ▸ OpenAI ▸ template)</option>
+              <option value="elevenlabs">ElevenLabs</option>
+              <option value="openai">OpenAI tts-1</option>
+              <option value="disabled">Desactivado (sólo template)</option>
+            </select>
+          </Row>
+          {(tts.provider === 'auto' || tts.provider === 'elevenlabs') && (
+            <>
+              <Row label="ElevenLabs · API key">
+                <input
+                  type="password"
+                  value={tts.elevenLabsApiKey}
+                  onChange={(e) => setTts({ ...tts, elevenLabsApiKey: e.target.value })}
+                  placeholder="xi-..."
+                  className="sl-input w-full text-[11px] px-2 py-1 rounded border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-200"
+                />
+              </Row>
+              <Row label="ElevenLabs · Voice ID">
+                <input
+                  type="text"
+                  value={tts.elevenLabsVoiceId}
+                  onChange={(e) => setTts({ ...tts, elevenLabsVoiceId: e.target.value.trim() })}
+                  placeholder="21m00Tcm4TlvDq8ikWAM (Rachel)"
+                  className="sl-input w-full text-[11px] px-2 py-1 rounded border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-200"
+                />
+              </Row>
+              <Row label="ElevenLabs · Modelo">
+                <select
+                  value={tts.elevenLabsModelId}
+                  onChange={(e) => setTts({ ...tts, elevenLabsModelId: e.target.value })}
+                  className="sl-select w-full text-[11px] px-2 py-1 rounded border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-200"
+                >
+                  <option value="eleven_multilingual_v2">eleven_multilingual_v2 (29 idiomas)</option>
+                  <option value="eleven_turbo_v2_5">eleven_turbo_v2_5 (más barato)</option>
+                  <option value="eleven_monolingual_v1">eleven_monolingual_v1 (solo EN)</option>
+                </select>
+              </Row>
+            </>
+          )}
+          {tts.provider !== 'disabled' && (
+            <p className="text-[10px] text-zinc-500 dark:text-zinc-500 leading-snug -mt-0.5">
+              {tts.provider === 'elevenlabs' || (tts.provider === 'auto' && tts.elevenLabsApiKey)
+                ? 'ElevenLabs activo · ~USD 0.18 / 1 000 caracteres en el plan Starter.'
+                : tts.provider === 'openai' || (tts.provider === 'auto' && !tts.elevenLabsApiKey)
+                ? 'OpenAI tts-1 activo · ~USD 0.015 / 1 000 caracteres. Reusa la API key del proveedor IA.'
+                : 'Configura una API key para activar la generación de audio premium.'}
+            </p>
+          )}
+          {tts.provider !== 'disabled' &&
+            (tts.provider === 'elevenlabs' || tts.provider === 'auto') &&
+            !tts.elevenLabsApiKey &&
+            tts.provider === 'elevenlabs' && (
+              <p className="text-[10px] text-red-600 dark:text-red-400 leading-snug -mt-0.5">
+                Falta la API key de ElevenLabs — el TTS premium no funcionará en modo explícito.
+              </p>
+            )}
+        </Section>
+
+        {/* ASR — on-device transcription via Whisper.cpp WASM. The user
+            picks a model size based on their hardware budget; the URL is
+            auto-filled from the preset table in `whisper-asr.ts`. The
+            first download streams a progress percentage from the offscreen
+            document via `OFFSCREEN_WHISPER_MODEL_PROGRESS`. Subsequent
+            loads from `Cache Storage` are instant. */}
         <Section icon={<Volume2 size={10} />} title="Transcripción on-device">
           <Row label="Habilitar ASR (Whisper)">
             <Toggle on={asr.enabled} onChange={(v) => setAsr({ ...asr, enabled: v })} />
           </Row>
+          {asr.enabled && (
+            <>
+              <Row label="Modelo">
+                <select
+                  value={asr.model}
+                  onChange={(e) => {
+                    const next = e.target.value as 'tiny' | 'base' | 'small' | 'medium';
+                    setAsr({
+                      ...asr,
+                      model: next,
+                      // Auto-fill the URL whenever the user picks a preset
+                      // so they don't have to copy/paste from the README.
+                      // Manual override still wins if `modelUrl` was set
+                      // explicitly — the SW reads `asr.modelUrl ||
+                      // PRESETS[asr.model].url`.
+                      modelUrl: WHISPER_MODEL_PRESETS[next].url,
+                    });
+                  }}
+                  className="sl-select w-full text-[11px] px-2 py-1 rounded border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-200"
+                >
+                  {(Object.entries(WHISPER_MODEL_PRESETS) as Array<[
+                    keyof typeof WHISPER_MODEL_PRESETS,
+                    (typeof WHISPER_MODEL_PRESETS)[keyof typeof WHISPER_MODEL_PRESETS],
+                  ]>).map(([key, preset]) => (
+                    <option key={key} value={key}>
+                      {preset.label}
+                    </option>
+                  ))}
+                </select>
+              </Row>
+              <Row label="Glue URL (whisper.js)">
+                <input
+                  type="text"
+                  value={asr.glueUrl ?? ''}
+                  onChange={(e) => setAsr({ ...asr, glueUrl: e.target.value.trim() || undefined })}
+                  placeholder="https://tu-cdn.com/whisper.js"
+                  className="sl-input sl-mono w-full text-[10px] px-2 py-1 rounded border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-200"
+                />
+              </Row>
+              <Row label="Modelo URL (override)">
+                <input
+                  type="text"
+                  value={asr.modelUrl ?? ''}
+                  onChange={(e) => setAsr({ ...asr, modelUrl: e.target.value.trim() || undefined })}
+                  placeholder={WHISPER_MODEL_PRESETS[asr.model].url}
+                  className="sl-input sl-mono w-full text-[10px] px-2 py-1 rounded border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-200"
+                />
+              </Row>
+              <WhisperModelProgress modelKey={asr.model} />
+            </>
+          )}
           <p className="text-[10px] text-zinc-500 dark:text-zinc-500 leading-snug -mt-0.5">
-            Cuando una plataforma no expone subtítulos (ej. video sin captions), se ejecuta Whisper.cpp localmente en WebAssembly. El modelo se descarga la primera vez (~75 MB) y queda cacheado en el navegador.
+            Whisper.cpp corre en CPU vía WebAssembly (no usa GPU). Los modelos
+            más grandes son más precisos pero 5-10× más lentos transcribiendo.
+            <strong className="block mt-1">Tiny</strong> recomendado para portátiles
+            sin acelerador dedicado; <strong>Base</strong> para escritorios; <strong>Small</strong> /
+            <strong> Medium</strong> sólo si tu CPU lo aguanta. La primera descarga queda
+            cacheada en el navegador y no vuelve a salir a la red.
           </p>
         </Section>
 
@@ -393,6 +562,7 @@ export function SettingsTab() {
               { l: 'Toggle subtítulos',  keys: ['Alt', 'C'] },
               { l: 'Repetir frase',      keys: ['Alt', 'R'] },
               { l: 'Re-capturar frame',  keys: ['Alt', 'V'] },
+              { l: 'Abrir / cerrar panel', keys: ['Alt', 'K'] },
               { l: 'Separar / unir expresión',  keys: ['Scroll', 'hover'] },
             ].map(s => (
               <div key={s.l} className="flex items-center justify-between py-1 text-[11px]">
@@ -410,6 +580,19 @@ export function SettingsTab() {
               </div>
             ))}
           </div>
+          <button
+            type="button"
+            onClick={() => {
+              try {
+                chrome.tabs.create({ url: chrome.runtime.getURL('src/onboarding/index.html') });
+              } catch {
+                window.open('/src/onboarding/index.html', '_blank');
+              }
+            }}
+            className="w-full mt-2 flex items-center justify-center gap-1.5 text-[11px] font-medium text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-500/10 hover:bg-indigo-100 dark:hover:bg-indigo-500/15 border border-indigo-200 dark:border-indigo-500/25 rounded-md px-2 py-1.5 transition-colors"
+          >
+            Repetir configuración inicial
+          </button>
         </Section>
       </div>
     </div>
@@ -535,5 +718,84 @@ function CompactSlider({ label, defaultValue, max, unit }: { label: string; defa
         className="sl-range w-full"
       />
     </Row>
+  );
+}
+
+/**
+ * Listens for `OFFSCREEN_WHISPER_MODEL_PROGRESS` messages broadcast by the
+ * offscreen document when downloading a Whisper ggml model. Shows a minimal
+ * progress bar that fills up during the (potentially long) first download,
+ * then disappears when done or when the model is loaded from cache.
+ *
+ * The component only renders anything while a download is actively in
+ * progress (fraction > 0 && fraction < 1).
+ */
+function WhisperModelProgress({ modelKey }: { modelKey: WhisperModelKey }) {
+  const [progress, setProgress] = useState<{
+    fraction: number;
+    loadedBytes: number;
+    totalBytes: number;
+    done: boolean;
+    cached: boolean;
+  } | null>(null);
+
+  useEffect(() => {
+    const handler = (msg: Record<string, unknown>) => {
+      if (msg?.type !== 'OFFSCREEN_WHISPER_MODEL_PROGRESS') return;
+      const info = msg as {
+        modelKey: string | null;
+        fraction: number;
+        loadedBytes: number;
+        totalBytes: number;
+        done: boolean;
+        cached: boolean;
+      };
+      // Only show progress for the model the user currently has selected.
+      if (info.modelKey !== null && info.modelKey !== modelKey) return;
+      setProgress({
+        fraction: info.fraction,
+        loadedBytes: info.loadedBytes,
+        totalBytes: info.totalBytes,
+        done: info.done,
+        cached: info.cached,
+      });
+      // Auto-hide after completion.
+      if (info.done) {
+        setTimeout(() => setProgress(null), 2000);
+      }
+    };
+    try {
+      chrome.runtime.onMessage.addListener(handler);
+    } catch {
+      /* not in an extension context (dev preview) — no-op */
+    }
+    return () => {
+      try {
+        chrome.runtime.onMessage.removeListener(handler);
+      } catch {
+        /* ignore */
+      }
+    };
+  }, [modelKey]);
+
+  if (!progress || progress.done || progress.fraction === 0) return null;
+
+  const pct = Math.round(progress.fraction * 100);
+  const mb = (progress.loadedBytes / 1_000_000).toFixed(1);
+  const totalMb = (progress.totalBytes / 1_000_000).toFixed(0);
+
+  return (
+    <div className="space-y-1 -mt-0.5">
+      <div className="flex items-center justify-between text-[10px] text-zinc-500 dark:text-zinc-400">
+        <span>Descargando modelo…</span>
+        <span className="font-mono tabular-nums">{mb} / {totalMb} MB ({pct}%)</span>
+      </div>
+      <div className="h-1.5 bg-zinc-200 dark:bg-zinc-800 rounded-full overflow-hidden">
+        <div
+          className="h-full bg-indigo-500 rounded-full transition-all duration-300"
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+    </div>
   );
 }

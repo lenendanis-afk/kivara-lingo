@@ -24,6 +24,8 @@ interface ResolveContext {
   monolingual: string;
   phonetic: string;
   examples: string[];
+  /** Native-language translation of the full sentence (dual subtitle). */
+  sentenceTranslation: string;
   ai: AiEnrichment | null;
 }
 
@@ -57,7 +59,10 @@ function resolveField(field: string, source: FieldSource, ctx: ResolveContext): 
       return ctx.phonetic;
     case 'translation':
     case 'translate':
-      return ctx.translation || ctx.bilingual || '';
+      // If the field name hints at "sentence translation" (not word
+      // translation), prefer the full-sentence bilingual subtitle.
+      // Otherwise return the word-level translation from the dictionary.
+      return ctx.translation || ctx.bilingual || ctx.sentenceTranslation || '';
     case 'bilingual':
       return ctx.bilingual || ctx.translation;
     case 'monolingual':
@@ -121,29 +126,38 @@ async function resolveAudio(
   if (!status.active) return null;
   if (request.cueStart == null || request.cueEnd == null) return null;
 
-  // The cue times in the request are video-time (ms). The offscreen recorder
-  // stores wall-clock timestamps. We translate by treating "now" as the
-  // current cue end + post-roll: the user just hit save while the cue was
-  // visible, so the rolling buffer covers it.
+  // The cue times are video-time (ms) — i.e. offsets on the media timeline.
+  // The offscreen recorder tags chunks with wall-clock `Date.now()`. To slice
+  // the correct window we translate video-time → wall-clock using the video's
+  // currentTime captured at the moment the user hit save. The relationship is:
+  //   wallClock(videoTime) = Date.now() - (videoTimeAtSave - videoTime) * 1
+  // because video plays at 1× real-time (assuming no seek between cue and save).
   const now = Date.now();
-  const duration = Math.max(500, request.cueEnd - request.cueStart);
+  const videoNow = request.videoTimeAtSave ?? request.cueEnd ?? now;
   const preRoll = Math.max(0, capture.preRoll ?? DEFAULT_CAPTURE.preRoll);
   const postRoll = Math.max(0, capture.postRoll ?? DEFAULT_CAPTURE.postRoll);
-  const start = now - duration - preRoll;
-  const end = now + postRoll;
+  // How far back in wall-clock time was the cue start / end relative to "now"?
+  const cueStartAgo = videoNow - request.cueStart; // ms before videoTimeAtSave
+  const cueEndAgo = videoNow - request.cueEnd;     // ms before videoTimeAtSave (≥ 0)
+  const start = now - cueStartAgo - preRoll;
+  const end = now - cueEndAgo + postRoll;
 
   // VAD-on-extract trims the WebM/Opus chunk down to actual speech and
   // re-encodes as 16 kHz mono WAV — Anki plays it, file size is small and
   // the same PCM is what Whisper.cpp will consume in the ASR fallback path.
   const useVad = capture.endDetect === 'vad';
   const clip = await extractAudioClip(start, end, {
-    format: 'wav',
+    // MP3 keeps Anki media folder small (~10× smaller than WAV PCM) and
+    // syncs faster with AnkiWeb. The offscreen processor falls back to
+    // WAV automatically if the MP3 encoder fails to load (e.g. CSP
+    // blocking the dynamic import).
+    format: 'mp3',
     useVad,
     preRollMs: preRoll,
     postRollMs: postRoll,
   });
   if (!clip.ok || !clip.dataUrl) return null;
-  return { dataUrl: clip.dataUrl, mime: clip.mimeType || 'audio/wav' };
+  return { dataUrl: clip.dataUrl, mime: clip.mimeType || 'audio/mpeg' };
 }
 
 export async function createCardFromRequest(
@@ -151,6 +165,14 @@ export async function createCardFromRequest(
   mapping: AnkiMapping,
   capture: CaptureSettings = DEFAULT_CAPTURE,
 ): Promise<CreateCardResponse> {
+  // Validate required mapping fields before attempting any work.
+  if (!mapping.deckName) {
+    return { ok: false, error: 'No se ha configurado un mazo de Anki (deckName vacío).' };
+  }
+  if (!mapping.modelName) {
+    return { ok: false, error: 'No se ha configurado un modelo de nota Anki (modelName vacío).' };
+  }
+
   const warnings: string[] = [];
   const dictionaryHit = await translateToken(request.token, request.language ?? 'en');
 
@@ -183,6 +205,7 @@ export async function createCardFromRequest(
     monolingual: dictionaryHit?.monolingual ?? '',
     phonetic: dictionaryHit?.phonetic ?? '',
     examples: dictionaryHit?.examples ?? [],
+    sentenceTranslation: request.sentenceTranslation ?? '',
     ai: aiData,
   };
 
@@ -327,7 +350,7 @@ export async function createCardFromRequest(
         tags: ['kivara-lingo', request.platform ?? 'web'].filter(Boolean) as string[],
         picture: pictures.length ? pictures : undefined,
         audio: audios.length ? audios : undefined,
-        options: { allowDuplicate: false },
+        options: { allowDuplicate: false, duplicateScope: 'deck' },
       },
       mapping.ankiUrl,
       mapping.apiKey,
