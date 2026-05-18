@@ -34,7 +34,7 @@ export function SettingsTab() {
   const setHideShadows = (v: boolean) => setCleanup({ ...cleanup, hideShadows: v });
 
   return (
-    <div className="h-full min-h-0 overflow-y-auto bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100">
+    <div className="flex flex-col h-full min-h-0 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 overflow-y-auto">
       {/* `pb-6` reserves enough scroll room so the last "Atajos" row stays
           fully readable even when the OS taskbar overlaps the bottom of the
           panel in dock-to-side mode. */}
@@ -584,9 +584,13 @@ export function SettingsTab() {
             type="button"
             onClick={() => {
               try {
-                chrome.tabs.create({ url: chrome.runtime.getURL('src/onboarding/index.html') });
+                // Send to background to open with chrome.tabs — content scripts
+                // can't call chrome.tabs directly and window.open resolves
+                // relative to the host page (YouTube/Netflix/etc).
+                chrome.runtime.sendMessage({ type: 'OPEN_URL', url: chrome.runtime.getURL('src/onboarding/index.html') });
               } catch {
-                window.open('/src/onboarding/index.html', '_blank');
+                // Last resort — at least try the extension URL directly
+                window.open(chrome.runtime.getURL('src/onboarding/index.html'), '_blank');
               }
             }}
             className="w-full mt-2 flex items-center justify-center gap-1.5 text-[11px] font-medium text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-500/10 hover:bg-indigo-100 dark:hover:bg-indigo-500/15 border border-indigo-200 dark:border-indigo-500/25 rounded-md px-2 py-1.5 transition-colors"
@@ -680,19 +684,49 @@ function SegmentedControl<T extends string>({ options, value, onChange }: {
 }
 
 function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) {
+  // Detect dark mode from parent - the panel always has `.dark` class in dark mode
+  const ref = React.useRef<HTMLButtonElement>(null);
+  const [isDark, setIsDark] = React.useState(false);
+  React.useEffect(() => {
+    if (ref.current) {
+      setIsDark(!!ref.current.closest('.dark'));
+    }
+  });
+
+  const bgOn = isDark ? '#6366f1' : '#4f46e5';
+  const bgOff = isDark ? '#3f3f46' : '#d4d4d8';
+
   return (
     <button
+      ref={ref}
       type="button"
       onClick={() => onChange(!on)}
-      className={`relative shrink-0 w-9 h-5 rounded-full transition-colors ${on ? 'bg-indigo-600 dark:bg-indigo-500' : 'bg-zinc-300 dark:bg-zinc-700'}`}
+      style={{
+        position: 'relative',
+        flexShrink: 0,
+        width: 36,
+        height: 20,
+        borderRadius: 9999,
+        backgroundColor: on ? bgOn : bgOff,
+        transition: 'background-color 150ms',
+        border: 'none',
+        cursor: 'pointer',
+        padding: 0,
+      }}
     >
-      {/* Inline `transform` is used instead of a Tailwind utility because the
-          panel renders inside a Shadow DOM with a separately scanned content
-          set; `translate-x-4` was being purged from the bundle, which made
-          the knob change color without ever sliding. */}
       <span
-        className="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform duration-200"
-        style={{ transform: on ? 'translateX(16px)' : 'translateX(0)' }}
+        style={{
+          position: 'absolute',
+          top: 2,
+          left: 2,
+          width: 16,
+          height: 16,
+          borderRadius: 9999,
+          backgroundColor: '#fff',
+          boxShadow: '0 1px 2px rgba(0,0,0,0.2)',
+          transition: 'transform 200ms',
+          transform: on ? 'translateX(16px)' : 'translateX(0)',
+        }}
       />
     </button>
   );
@@ -700,9 +734,9 @@ function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void 
 
 function SoftDot() {
   return (
-    <span className="relative inline-flex w-2 h-2">
-      <span className="absolute inset-0 rounded-full bg-emerald-400/40 animate-ping" style={{ animationDuration: '2.4s' }} />
-      <span className="relative inline-flex rounded-full w-2 h-2 bg-emerald-500" />
+    <span style={{ position: 'relative', display: 'inline-flex', width: 8, height: 8 }}>
+      <span className="absolute inset-0 rounded-full animate-ping" style={{ backgroundColor: 'rgba(74,222,128,0.4)', animationDuration: '2.4s' }} />
+      <span style={{ position: 'relative', display: 'inline-flex', width: 8, height: 8, borderRadius: 9999, backgroundColor: '#22c55e' }} />
     </span>
   );
 }

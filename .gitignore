@@ -59,6 +59,9 @@ test.mjs
 *.xpi
 web-ext-artifacts/
 
+# Design mock reference (local only, not part of the source)
+mock/
+
 # Avoid mixing package managers — the project is on pnpm (pnpm-lock.yaml).
 package-lock.json
 yarn.lock

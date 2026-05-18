@@ -98,10 +98,10 @@ export function DictPacksSection() {
   );
 
   return (
-    <section className="border border-zinc-200 dark:border-zinc-800 rounded-md overflow-hidden">
-      <header className="px-2.5 py-1.5 bg-zinc-50 dark:bg-zinc-900/50 border-b border-zinc-200 dark:border-zinc-800 flex items-center gap-2">
+    <section className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden">
+      <header className="px-2.5 py-1.5 bg-zinc-50/60 dark:bg-zinc-900/60 border-b border-zinc-100 dark:border-zinc-800/60 flex items-center gap-2">
         <BookText size={10} className="text-zinc-500" />
-        <h3 className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600 dark:text-zinc-400 flex-1">
+        <h3 className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 flex-1">
           Diccionarios offline
         </h3>
         <span className="text-[10px] text-zinc-500 dark:text-zinc-500 normal-case">

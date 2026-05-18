@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { sendMessage } from 'webext-bridge/content-script';
-import { Volume1, Copy, Check, Quote, AudioLines, Camera } from 'lucide-react';
+import { Volume1, Copy, Check, Quote, AudioLines, Camera, Link2, GraduationCap, BookOpenCheck } from 'lucide-react';
 import type { SubtitleStyles, Mode, TranslateResponse } from '../../shared/types';
 import { tokenizeSentence } from '../nlp/tokenize';
 import { lookupDictionary } from '../nlp/dictionary';
@@ -139,6 +139,7 @@ export function SubtitleOverlay({
   );
   const showDualSubtitle = useKivaraStore((s) => s.translate.showDualSubtitle);
   const nativeLanguage = useKivaraStore((s) => s.translate.targetLanguage || 'es');
+  const setMode = useKivaraStore((s) => s.setMode);
 
   // Dual caption priority chain:
   //   1. Native-language alt cue from the platform's own subtitle track
@@ -334,6 +335,12 @@ export function SubtitleOverlay({
 
   const isReading = mode === 'reading';
 
+  const rejoinAllMWEs = () => {
+    setExpandedMWEs(new Set());
+    setHoveredId(null);
+    hoveredKeyRef.current = null;
+  };
+
   // Honor the cue's `align` setting only when the user opted in. Otherwise
   // (and when the adapter couldn't extract an align hint) we keep the
   // overlay's default centered layout, which is what most viewers expect on
@@ -349,14 +356,94 @@ export function SubtitleOverlay({
     textAlignment === 'left' ? 'flex-start' : textAlignment === 'right' ? 'flex-end' : 'center';
 
   return (
-    <div
-      className="absolute inset-x-0 z-10 flex flex-col items-center px-8 transition-all duration-200"
-      style={{
-        top: `${verticalPercent}%`,
-        transform: 'translateY(-50%)',
-        pointerEvents: 'none',
-      }}
-    >
+    <>
+      {/* Extension badge + mode toggle (top-right of video) */}
+      <div className="absolute top-4 right-4 z-30 flex items-center gap-1.5 pointer-events-auto">
+        {expandedMWEs.size > 0 && !isReading && (
+          <button
+            tabIndex={-1}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={rejoinAllMWEs}
+            className="bg-amber-500/15 backdrop-blur-md text-amber-200 text-[11px] font-medium px-2 py-1 rounded-full shadow-lg flex items-center gap-1 hover:bg-amber-500/25 transition-colors border border-amber-400/30"
+            title="Volver a juntar todas las expresiones"
+          >
+            <Link2 size={11} /> Unir expresiones
+          </button>
+        )}
+        <button
+          tabIndex={-1}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => setMode(isReading ? 'learning' : 'reading')}
+          className="group/badge w-7 h-7 rounded-full bg-black/40 hover:bg-black/60 backdrop-blur-md ring-1 ring-white/10 hover:ring-white/20 flex items-center justify-center transition-all"
+          title={!isReading ? 'Kivara Lingo · Aprendizaje (clic para Lectura)' : 'Kivara Lingo · Lectura (clic para Aprendizaje)'}
+        >
+          {!isReading ? (
+            <span className="relative flex items-center justify-center">
+              <span className="absolute w-1.5 h-1.5 rounded-full bg-emerald-400/40 animate-ping" style={{ animationDuration: '2.4s' }} />
+              <GraduationCap size={13} className="text-indigo-300/90 group-hover/badge:text-indigo-200" strokeWidth={2} />
+            </span>
+          ) : (
+            <BookOpenCheck size={13} className="text-zinc-400 group-hover/badge:text-zinc-200" strokeWidth={2} />
+          )}
+        </button>
+      </div>
+
+      {/* Capture overlay — covers the full video area */}
+      {!isReading && captureState !== 'idle' && (
+        <div
+          className="absolute inset-0 z-40 pointer-events-none transition-all duration-500 ease-out"
+          style={{
+            background:
+              captureState === 'screenshot'
+                ? 'radial-gradient(circle at center, rgba(99,102,241,0.25), rgba(0,0,0,0.35))'
+                : 'rgba(9, 9, 11, 0.55)',
+            backdropFilter: captureState === 'audio' ? 'blur(4px)' : 'blur(0px)',
+          }}
+        />
+      )}
+
+      {captureState === 'audio' && (
+        <div className="absolute inset-0 z-50 flex items-end justify-center pb-8 pointer-events-none">
+          <div className="bg-zinc-900/90 backdrop-blur-xl border border-zinc-700/60 rounded-xl px-4 py-3 flex items-center gap-3 shadow-2xl animate-in fade-in slide-in-from-bottom-2 duration-300">
+            <div className="w-9 h-9 rounded-lg bg-indigo-500/15 ring-1 ring-indigo-400/30 flex items-center justify-center shrink-0">
+              <AudioLines size={18} className="text-indigo-300" />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <div className="flex items-center gap-1.5">
+                <span className="text-white text-xs font-semibold">Capturando audio</span>
+                <span className="text-[9px] uppercase tracking-wider font-bold text-indigo-300 bg-indigo-500/20 px-1.5 py-0.5 rounded">VAD</span>
+              </div>
+              <div className="flex gap-[3px] items-end h-3">
+                {[0.5, 1, 0.7, 0.4, 0.85, 0.6, 0.9, 0.5].map((h, i) => (
+                  <span
+                    key={i}
+                    className="w-[2px] bg-indigo-400 rounded-full animate-pulse"
+                    style={{
+                      height: `${h * 12}px`,
+                      animationDuration: `${0.9 + (i % 3) * 0.15}s`,
+                      animationDelay: `${i * 60}ms`,
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
+            <div className="flex items-center gap-1 text-[10px] text-zinc-400 ml-1 pl-3 border-l border-zinc-700/60">
+              <Camera size={11} className="text-emerald-400" />
+              <span>Frame ✓</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Subtitles Overlay */}
+      <div
+        className="absolute inset-x-0 z-10 flex flex-col items-center px-8 transition-all duration-300"
+        style={{
+          top: `${verticalPercent}%`,
+          transform: 'translateY(-50%)',
+          pointerEvents: 'none',
+        }}
+      >
       <div
         className="relative flex flex-col items-center pointer-events-auto select-text"
         onMouseEnter={handleMouseEnter}
@@ -426,15 +513,8 @@ export function SubtitleOverlay({
           </div>
         )}
 
-        {!isReading && captureState !== 'idle' && (
-          <div className="absolute -top-10 right-0 flex items-center gap-1 bg-zinc-900/95 border border-zinc-700/60 rounded-md px-2 py-1 text-[10px] text-zinc-200 shadow-xl">
-            {captureState === 'screenshot' ? <Camera size={11} /> : <AudioLines size={11} />}
-            <span>{captureState === 'screenshot' ? 'Capturando frame…' : 'Procesando audio…'}</span>
-          </div>
-        )}
-
         <div
-          className="rounded-md px-4 py-2 transition-all duration-300"
+          className="rounded-md px-4 py-2 transition-all duration-300 cursor-pointer"
           style={{
             textAlign: textAlignment,
             fontSize: `${subtitleStyles.fontSize}px`,
@@ -655,5 +735,6 @@ export function SubtitleOverlay({
         </div>
       </div>
     </div>
+    </>
   );
 }

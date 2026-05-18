@@ -44,7 +44,7 @@ export function SubtitlesTab({ styles, setStyles }: SubtitlesTabProps) {
     styles.keepNativeAlignment === DEFAULT_STYLES.keepNativeAlignment;
 
   return (
-    <div className="h-full min-h-0 overflow-y-auto bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100">
+    <div className="flex flex-col h-full min-h-0 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 overflow-y-auto">
       {/* `pb-6` is enough scroll room when the panel snaps to the viewport
           bottom (no taskbar overlap). Previously `pb-12` left a visible
           empty zinc-950 strip below the last section. */}
@@ -85,20 +85,29 @@ export function SubtitlesTab({ styles, setStyles }: SubtitlesTabProps) {
 
           <Row label="Color">
             <div className="flex gap-1.5">
-              {['#FFFFFF', '#FCD34D', '#A7F3D0', '#FECACA', '#E9D5FF'].map(color => (
-                <button
-                  key={color}
-                  onClick={() => updateStyle('color', color)}
-                  className={`w-6 h-6 rounded-full border-2 transition-transform ring-2 ring-inset ${
-                    styles.color === color
-                      ? 'border-indigo-500 dark:border-indigo-400 ring-indigo-500/30 dark:ring-indigo-400/30 scale-110'
-                      : 'border-zinc-400 dark:border-zinc-300 ring-zinc-500/30 dark:ring-white/25 hover:border-zinc-500 dark:hover:border-white'
-                  }`}
-                  style={{ backgroundColor: color }}
-                  aria-label={`Color ${color}`}
-                  title={color}
-                />
-              ))}
+              {['#FFFFFF', '#FCD34D', '#A7F3D0', '#FECACA', '#E9D5FF'].map(color => {
+                const selected = styles.color === color;
+                return (
+                  <button
+                    key={color}
+                    onClick={() => updateStyle('color', color)}
+                    style={{
+                      width: 24,
+                      height: 24,
+                      borderRadius: '50%',
+                      border: `2px solid ${selected ? '#818cf8' : '#3f3f46'}`,
+                      backgroundColor: color,
+                      transform: selected ? 'scale(1.1)' : 'scale(1)',
+                      transition: 'transform 150ms, border-color 150ms',
+                      outline: 'none',
+                      cursor: 'pointer',
+                      padding: 0,
+                    }}
+                    aria-label={`Color ${color}`}
+                    title={color}
+                  />
+                );
+              })}
             </div>
           </Row>
 
@@ -125,20 +134,29 @@ export function SubtitlesTab({ styles, setStyles }: SubtitlesTabProps) {
         <Section icon={<Palette size={10} />} title="Fondo">
           <Row label="Color">
             <div className="flex gap-1.5">
-              {['#000000', '#18181B', '#1E3A8A', '#831843'].map(color => (
-                <button
-                  key={color}
-                  onClick={() => updateStyle('backgroundColor', color)}
-                  className={`w-6 h-6 rounded-full border-2 transition-transform ring-2 ring-inset ${
-                    styles.backgroundColor === color
-                      ? 'border-indigo-500 dark:border-indigo-400 ring-indigo-500/30 dark:ring-indigo-400/30 scale-110'
-                      : 'border-zinc-400 dark:border-zinc-300 ring-zinc-500/30 dark:ring-white/25 hover:border-zinc-500 dark:hover:border-white'
-                  }`}
-                  style={{ backgroundColor: color }}
-                  aria-label={`Fondo ${color}`}
-                  title={color}
-                />
-              ))}
+              {['#000000', '#18181B', '#1E3A8A', '#831843'].map(color => {
+                const selected = styles.backgroundColor === color;
+                return (
+                  <button
+                    key={color}
+                    onClick={() => updateStyle('backgroundColor', color)}
+                    style={{
+                      width: 24,
+                      height: 24,
+                      borderRadius: '50%',
+                      border: `2px solid ${selected ? '#818cf8' : '#3f3f46'}`,
+                      backgroundColor: color,
+                      transform: selected ? 'scale(1.1)' : 'scale(1)',
+                      transition: 'transform 150ms, border-color 150ms',
+                      outline: 'none',
+                      cursor: 'pointer',
+                      padding: 0,
+                    }}
+                    aria-label={`Fondo ${color}`}
+                    title={color}
+                  />
+                );
+              })}
             </div>
           </Row>
 
@@ -261,6 +279,15 @@ function ToggleRow({
   checked: boolean;
   onChange: (v: boolean) => void;
 }) {
+  const ref = React.useRef<HTMLButtonElement>(null);
+  const [isDark, setIsDark] = React.useState(false);
+  React.useEffect(() => {
+    if (ref.current) setIsDark(!!ref.current.closest('.dark'));
+  });
+
+  const bgOn = isDark ? '#6366f1' : '#4f46e5';
+  const bgOff = isDark ? '#3f3f46' : '#d4d4d8';
+
   return (
     <label className="flex items-start justify-between gap-3 cursor-pointer select-none">
       <div className="flex-1 min-w-0">
@@ -274,17 +301,38 @@ function ToggleRow({
         )}
       </div>
       <button
+        ref={ref}
         type="button"
         role="switch"
         aria-checked={checked}
         onClick={() => onChange(!checked)}
-        className={`relative shrink-0 w-9 h-5 rounded-full transition-colors duration-200 mt-0.5 ${
-          checked ? 'bg-indigo-500' : 'bg-zinc-300 dark:bg-zinc-700'
-        }`}
+        style={{
+          position: 'relative',
+          flexShrink: 0,
+          width: 36,
+          height: 20,
+          borderRadius: 9999,
+          marginTop: 2,
+          backgroundColor: checked ? bgOn : bgOff,
+          border: 'none',
+          cursor: 'pointer',
+          padding: 0,
+          transition: 'background-color 150ms',
+        }}
       >
         <span
-          className="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform duration-200"
-          style={{ transform: checked ? 'translateX(16px)' : 'translateX(0)' }}
+          style={{
+            position: 'absolute',
+            top: 2,
+            left: 2,
+            width: 16,
+            height: 16,
+            borderRadius: 9999,
+            backgroundColor: '#fff',
+            boxShadow: '0 1px 2px rgba(0,0,0,0.2)',
+            transition: 'transform 200ms',
+            transform: checked ? 'translateX(16px)' : 'translateX(0)',
+          }}
         />
       </button>
     </label>

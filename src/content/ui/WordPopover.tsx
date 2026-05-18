@@ -214,13 +214,13 @@ export function WordPopover({
   const levelClasses = (level: string | undefined): string => {
     if (!level) return '';
     switch (level.toUpperCase()) {
-      case 'A1': return 'text-emerald-300 bg-emerald-500/15 ring-emerald-500/30';
-      case 'A2': return 'text-teal-300 bg-teal-500/15 ring-teal-500/30';
-      case 'B1': return 'text-sky-300 bg-sky-500/15 ring-sky-500/30';
-      case 'B2': return 'text-indigo-300 bg-indigo-500/15 ring-indigo-500/30';
-      case 'C1': return 'text-fuchsia-300 bg-fuchsia-500/15 ring-fuchsia-500/30';
-      case 'C2': return 'text-rose-300 bg-rose-500/15 ring-rose-500/30';
-      default:   return 'text-zinc-300 bg-zinc-500/15 ring-zinc-500/30';
+      case 'A1': return 'text-emerald-300 bg-emerald-500/10 ring-emerald-500/25';
+      case 'A2': return 'text-emerald-300 bg-emerald-500/10 ring-emerald-500/25';
+      case 'B1': return 'text-sky-300 bg-sky-500/10 ring-sky-500/25';
+      case 'B2': return 'text-sky-300 bg-sky-500/10 ring-sky-500/25';
+      case 'C1': return 'text-amber-300 bg-amber-500/10 ring-amber-500/25';
+      case 'C2': return 'text-amber-300 bg-amber-500/10 ring-amber-500/25';
+      default:   return 'text-zinc-300 bg-zinc-500/10 ring-zinc-500/25';
     }
   };
 
@@ -295,7 +295,7 @@ export function WordPopover({
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
       data-kivara-hover-zone="true"
-      className="absolute left-1/2 -translate-x-1/2 bottom-full mb-3 z-30"
+      className="absolute left-1/2 -translate-x-1/2 bottom-full mb-3 z-30 animate-in fade-in zoom-in-95 slide-in-from-bottom-1 duration-150"
       style={{
         pointerEvents: 'auto',
         textShadow: 'none',
@@ -307,7 +307,7 @@ export function WordPopover({
         fontFamily:
           '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
         textAlign: 'left',
-        width: '280px',
+        width: '288px',
         maxWidth: 'calc(100vw - 32px)',
         zIndex: 2147483646,
       }}
@@ -315,10 +315,10 @@ export function WordPopover({
       <div
         className="rounded-xl overflow-hidden text-left border"
         style={{
-          backgroundColor: 'rgba(24, 24, 27, 0.97)',
+          backgroundColor: 'rgba(24, 24, 27, 0.95)',
           borderColor: 'rgba(82, 82, 91, 0.6)',
-          backdropFilter: 'blur(12px)',
-          WebkitBackdropFilter: 'blur(12px)',
+          backdropFilter: 'blur(24px)',
+          WebkitBackdropFilter: 'blur(24px)',
           boxShadow:
             '0 20px 25px -5px rgba(0, 0, 0, 0.6), 0 10px 10px -5px rgba(0, 0, 0, 0.3)',
         }}
